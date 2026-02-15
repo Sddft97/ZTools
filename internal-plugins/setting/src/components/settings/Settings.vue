@@ -20,7 +20,12 @@
       <GeneralSettings v-if="activeMenu === 'general'" />
 
       <!-- 插件中心 -->
-      <PluginCenter v-if="activeMenu === 'plugins'" :search-query="props.searchQuery" />
+      <PluginCenter
+        v-if="activeMenu === 'plugins'"
+        :search-query="props.searchQuery"
+        :auto-open-plugin-name="autoOpenPluginName"
+        @auto-open-consumed="autoOpenPluginName = ''"
+      />
 
       <!-- 插件市场 -->
       <PluginMarket v-if="activeMenu === 'market'" :search-query="props.searchQuery" />
@@ -52,6 +57,13 @@
       <!-- AI 模型管理 -->
       <AiModels v-if="activeMenu === 'ai-models'" :search-query="props.searchQuery" />
 
+      <!-- 安装插件 -->
+      <PluginInstaller
+        v-if="activeMenu === 'install-plugin'"
+        :file-path="props.installPluginFilePath || ''"
+        @installed="handlePluginInstalled"
+      />
+
       <!-- 关于 -->
       <AboutPage v-if="activeMenu === 'about'" />
 
@@ -72,6 +84,7 @@ import GeneralSettings from './GeneralSettings.vue'
 import GlobalShortcuts from './GlobalShortcuts.vue'
 import LocalLaunch from './LocalLaunch.vue'
 import PluginCenter from './PluginCenter.vue'
+import PluginInstaller from './PluginInstaller.vue'
 import PluginMarket from './PluginMarket.vue'
 import SyncSettings from './SyncSettings.vue'
 import AboutPage from './AboutPage.vue'
@@ -80,6 +93,7 @@ import AboutPage from './AboutPage.vue'
 interface Props {
   activePage: string
   searchQuery?: string
+  installPluginFilePath?: string
 }
 
 const props = defineProps<Props>()
@@ -131,12 +145,21 @@ const activeMenu = computed({
 // 全局快捷键页面的预填目标指令（从 AllCommands 导航过来时使用）
 const shortcutAutoAddTarget = ref('')
 
+// 安装成功后自动打开的插件名称
+const autoOpenPluginName = ref('')
+
 // 处理子组件导航请求
 function handleNavigate(page: string, params?: Record<string, string>): void {
   if (page === 'shortcuts' && params?.targetCommand) {
     shortcutAutoAddTarget.value = params.targetCommand
   }
   activeMenu.value = page
+}
+
+// 插件安装成功后跳转到插件中心并打开详情
+function handlePluginInstalled(pluginName: string): void {
+  autoOpenPluginName.value = pluginName
+  activeMenu.value = 'plugins'
 }
 </script>
 

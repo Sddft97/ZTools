@@ -51,6 +51,25 @@ declare global {
         >
         getRunningPlugins: () => Promise<string[]>
         importPlugin: () => Promise<{ success: boolean; error?: string }>
+        readPluginInfoFromZip: (zipPath: string) => Promise<{
+          success: boolean
+          pluginInfo?: {
+            name: string
+            title: string
+            version: string
+            description: string
+            author: string
+            logo: string
+            features: Array<{ code: string; explain?: string }>
+            isInstalled: boolean
+          }
+          error?: string
+        }>
+        installPluginFromPath: (zipPath: string) => Promise<{
+          success: boolean
+          error?: string
+          plugin?: any
+        }>
         importDevPlugin: () => Promise<{ success: boolean; error?: string }>
         deletePlugin: (pluginPath: string) => Promise<{ success: boolean; error?: string }>
         killPlugin: (pluginPath: string) => Promise<{ success: boolean; error?: string }>

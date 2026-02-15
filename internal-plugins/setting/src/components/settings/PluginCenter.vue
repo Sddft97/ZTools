@@ -217,7 +217,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useToast } from '../../composables/useToast'
 import { weightedSearch } from '../../utils/weightedSearch'
 import AdaptiveIcon from '../common/AdaptiveIcon.vue'
@@ -226,6 +226,11 @@ import PluginDetail from './PluginDetail.vue'
 
 const props = defineProps<{
   searchQuery?: string
+  autoOpenPluginName?: string
+}>()
+
+const emit = defineEmits<{
+  (e: 'auto-open-consumed'): void
 }>()
 
 const { success, error, confirm } = useToast()
@@ -489,14 +494,38 @@ function handleKeydown(e: KeyboardEvent): void {
 }
 
 // 初始化时加载插件列表
-onMounted(() => {
-  loadPlugins()
+onMounted(async () => {
+  await loadPlugins()
+  // 如果有需要自动打开的插件，加载完成后打开详情
+  tryAutoOpenPlugin()
   window.addEventListener('keydown', handleKeydown, true)
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown, true)
 })
+
+// 监听 autoOpenPluginName 变化（从其他页面导航过来时）
+watch(
+  () => props.autoOpenPluginName,
+  (name) => {
+    if (name) {
+      tryAutoOpenPlugin()
+    }
+  }
+)
+
+// 尝试自动打开指定插件的详情
+function tryAutoOpenPlugin(): void {
+  const name = props.autoOpenPluginName
+  if (!name || plugins.value.length === 0) return
+
+  const plugin = plugins.value.find((p) => p.name === name)
+  if (plugin) {
+    openPluginDetail(plugin)
+    emit('auto-open-consumed')
+  }
+}
 
 // 打开插件详情
 function openPluginDetail(plugin: any): void {

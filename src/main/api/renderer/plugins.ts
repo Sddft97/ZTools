@@ -51,6 +51,12 @@ export class PluginsAPI {
     ipcMain.handle('get-plugin-db-data', (_event, pluginName: string) =>
       this.getPluginDbData(pluginName)
     )
+    ipcMain.handle('read-plugin-info-from-zip', (_event, zipPath: string) =>
+      this.readPluginInfoFromZip(zipPath)
+    )
+    ipcMain.handle('install-plugin-from-path', (_event, zipPath: string) =>
+      this.installPluginFromPath(zipPath)
+    )
     ipcMain.handle(
       'call-headless-plugin',
       async (_event, pluginPath: string, featureCode: string, action: any) => {
@@ -278,6 +284,132 @@ export class PluginsAPI {
       return { success: true, plugin: pluginInfo }
     } catch (error: unknown) {
       console.error('[Plugins] 安装插件失败:', error)
+      return { success: false, error: error instanceof Error ? error.message : '安装失败' }
+    }
+  }
+
+  /**
+   * 从 ZIP 文件中读取插件信息（不安装）
+   * 用于安装前预览插件详情
+   */
+  public async readPluginInfoFromZip(zipPath: string): Promise<any> {
+    try {
+      const zip = new AdmZip(zipPath)
+
+      // 读取 plugin.json
+      const pluginJsonContent = zip.readAsText('plugin.json')
+      if (!pluginJsonContent) {
+        return { success: false, error: '无效的插件文件：缺少 plugin.json' }
+      }
+
+      let pluginConfig: any
+      try {
+        pluginConfig = JSON.parse(pluginJsonContent)
+      } catch {
+        return { success: false, error: '无效的插件文件：plugin.json 格式错误' }
+      }
+
+      if (!pluginConfig.name) {
+        return { success: false, error: '无效的插件文件：缺少 name 字段' }
+      }
+
+      // 尝试提取 logo 为 base64
+      let logoBase64 = ''
+      if (pluginConfig.logo) {
+        try {
+          const logoEntry = zip.getEntry(pluginConfig.logo)
+          if (logoEntry) {
+            const logoBuffer = logoEntry.getData()
+            const ext = path.extname(pluginConfig.logo).toLowerCase().replace('.', '')
+            const mimeType =
+              ext === 'svg' ? 'image/svg+xml' : ext === 'png' ? 'image/png' : `image/${ext}`
+            logoBase64 = `data:${mimeType};base64,${logoBuffer.toString('base64')}`
+          }
+        } catch (error) {
+          console.warn('[Plugins] 提取插件 logo 失败:', error)
+        }
+      }
+
+      // 检查插件是否已安装
+      const existingPlugins = await this.getPlugins()
+      const isInstalled = existingPlugins.some((p: any) => p.name === pluginConfig.name)
+
+      return {
+        success: true,
+        pluginInfo: {
+          name: pluginConfig.name,
+          title: pluginConfig.title || pluginConfig.name,
+          version: pluginConfig.version || '未知',
+          description: pluginConfig.description || '',
+          author: pluginConfig.author || '未知',
+          logo: logoBase64,
+          features: pluginConfig.features || [],
+          isInstalled
+        }
+      }
+    } catch (error: unknown) {
+      console.error('[Plugins] 读取插件信息失败:', error)
+      return { success: false, error: error instanceof Error ? error.message : '读取失败' }
+    }
+  }
+
+  /**
+   * 从指定文件路径安装插件（.tool-plugin / .zip），支持覆盖已存在的插件
+   */
+  public async installPluginFromPath(zipPath: string): Promise<any> {
+    try {
+      // 先读取 ZIP 中的 plugin.json 获取插件名称
+      const zip = new AdmZip(zipPath)
+      const pluginJsonContent = zip.readAsText('plugin.json')
+      if (!pluginJsonContent) {
+        return { success: false, error: 'plugin.json 文件不存在' }
+      }
+
+      let pluginConfig: any
+      try {
+        pluginConfig = JSON.parse(pluginJsonContent)
+      } catch {
+        return { success: false, error: 'plugin.json 格式错误' }
+      }
+
+      if (!pluginConfig.name) {
+        return { success: false, error: 'plugin.json 缺少 name 字段' }
+      }
+
+      const pluginName = pluginConfig.name
+      const pluginPath = path.join(PLUGIN_DIR, pluginName)
+
+      // 检查是否已存在，如果存在则先删除旧版本（覆盖安装）
+      const existingPlugins: any[] = (await databaseAPI.dbGet('plugins')) || []
+      const existingIndex = existingPlugins.findIndex((p: any) => p.name === pluginName)
+
+      if (existingIndex !== -1) {
+        console.log('[Plugins] 插件已存在，执行覆盖安装:', pluginName)
+
+        // 终止正在运行的插件
+        try {
+          await this.pluginManager?.killPluginByName?.(pluginName)
+        } catch {
+          // 忽略终止错误
+        }
+
+        // 从数据库中移除旧记录
+        existingPlugins.splice(existingIndex, 1)
+        await databaseAPI.dbPut('plugins', existingPlugins)
+
+        // 删除旧目录
+        try {
+          await fs.rm(pluginPath, { recursive: true, force: true })
+          console.log('[Plugins] 已删除旧插件目录:', pluginPath)
+        } catch {
+          // 忽略删除错误
+        }
+      }
+
+      // 执行安装
+      return await this._installPluginFromZip(zipPath)
+    } catch (error: unknown) {
+      console.error('[Plugins] 覆盖安装插件失败:', error)
       return { success: false, error: error instanceof Error ? error.message : '安装失败' }
     }
   }

@@ -109,6 +109,20 @@ export class InternalPluginAPI {
       return await (pluginsAPI as any).importPlugin()
     })
 
+    ipcMain.handle('internal:read-plugin-info-from-zip', async (event, zipPath: string) => {
+      if (!requireInternalPlugin(this.pluginManager, event)) {
+        throw new PermissionDeniedError('internal:read-plugin-info-from-zip')
+      }
+      return await (pluginsAPI as any).readPluginInfoFromZip(zipPath)
+    })
+
+    ipcMain.handle('internal:install-plugin-from-path', async (event, zipPath: string) => {
+      if (!requireInternalPlugin(this.pluginManager, event)) {
+        throw new PermissionDeniedError('internal:install-plugin-from-path')
+      }
+      return await (pluginsAPI as any).installPluginFromPath(zipPath)
+    })
+
     ipcMain.handle('internal:import-dev-plugin', async (event) => {
       if (!requireInternalPlugin(this.pluginManager, event)) {
         throw new PermissionDeniedError('internal:import-dev-plugin')

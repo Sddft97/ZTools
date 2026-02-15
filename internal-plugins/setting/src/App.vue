@@ -11,6 +11,8 @@ const { toastState, confirmState, handleConfirm, handleCancel } = useToast()
 const activePage = ref<string>('general')
 // 搜索关键词
 const searchQuery = ref<string>('')
+// 安装插件文件路径
+const installPluginFilePath = ref<string>('')
 
 // 各页面搜索框 placeholder，未列出的页面不显示搜索框
 const pagePlaceholders: Record<string, string> = {
@@ -58,7 +60,8 @@ onMounted(() => {
       'ai-models': 'ai-models',
       data: 'data',
       'all-commands': 'all-commands',
-      sync: 'sync'
+      sync: 'sync',
+      'install-plugin': 'install-plugin'
     }
 
     const targetPage = pageMap[action.code] || 'general'
@@ -72,6 +75,14 @@ onMounted(() => {
     if (action.code === 'plugin-market-search' && action.payload) {
       searchQuery.value = action.payload
       window.ztools.setSubInputValue(action.payload)
+    }
+
+    // 安装插件：从 files payload 中提取文件路径
+    if (action.code === 'install-plugin' && action.payload) {
+      const files = Array.isArray(action.payload) ? action.payload : []
+      if (files.length > 0 && files[0].path) {
+        installPluginFilePath.value = files[0].path
+      }
     }
   })
 
@@ -108,7 +119,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <Settings v-model:active-page="activePage" :search-query="searchQuery" />
+  <Settings
+    v-model:active-page="activePage"
+    :search-query="searchQuery"
+    :install-plugin-file-path="installPluginFilePath"
+  />
   <!-- 全局Toast组件 -->
   <Toast
     v-model:visible="toastState.visible"
