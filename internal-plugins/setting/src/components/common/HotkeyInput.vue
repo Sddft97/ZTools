@@ -5,7 +5,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 
 interface Props {
   modelValue: string
@@ -23,24 +23,73 @@ const emit = defineEmits<{
   (e: 'change', value: string): void
 }>()
 
-// 录制状态
+const MODIFIER_CODES = [
+  'MetaLeft',
+  'MetaRight',
+  'ControlLeft',
+  'ControlRight',
+  'AltLeft',
+  'AltRight',
+  'ShiftLeft',
+  'ShiftRight'
+]
+
+const DOUBLE_TAP_INTERVAL = 400
+const MODIFIER_NAMES = ['Command', 'Ctrl', 'Alt', 'Option', 'Shift']
+
+function isDoubleTapFormat(value: string): boolean {
+  if (!value) return false
+  const parts = value.split('+')
+  return parts.length === 2 && parts[0] === parts[1] && MODIFIER_NAMES.includes(parts[0])
+}
+
 const isRecording = ref(false)
 const recordedKeys = ref<string[]>([])
 
-// 显示的快捷键文本
+// 双击检测状态
+const lastModifierOnlyTap = ref<{ modifier: string; time: number } | null>(null)
+const doubleTapTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const mainKeyPressed = ref(false)
+
+function getModifierName(code: string): string {
+  switch (code) {
+    case 'MetaLeft':
+    case 'MetaRight':
+      return 'Command'
+    case 'ControlLeft':
+    case 'ControlRight':
+      return 'Ctrl'
+    case 'AltLeft':
+    case 'AltRight':
+      return props.platform === 'win32' ? 'Alt' : 'Option'
+    case 'ShiftLeft':
+    case 'ShiftRight':
+      return 'Shift'
+    default:
+      return ''
+  }
+}
+
 const displayHotkey = computed(() => {
   if (isRecording.value) {
-    return recordedKeys.value.length > 0 ? recordedKeys.value.join('+') : '请按下快捷键...'
+    if (recordedKeys.value.length > 0) {
+      return recordedKeys.value.join('+')
+    }
+    return '请按下快捷键...'
+  }
+  if (isDoubleTapFormat(props.modelValue)) {
+    return props.modelValue
   }
   return props.modelValue || props.placeholder
 })
 
-// 开始录制快捷键
 async function startRecording(): Promise<void> {
   isRecording.value = true
   recordedKeys.value = []
+  mainKeyPressed.value = false
+  lastModifierOnlyTap.value = null
+  clearDoubleTapTimer()
 
-  // 请求后端注册临时快捷键监听
   try {
     const result = await window.ztools.internal.startHotkeyRecording()
     if (result.success) {
@@ -52,80 +101,126 @@ async function startRecording(): Promise<void> {
     console.error('启动后端快捷键监听异常，使用前端监听:', error)
   }
 
-  // 同时监听前端键盘事件作为备用
   document.addEventListener('keydown', handleKeyDown)
   document.addEventListener('keyup', handleKeyUp)
 }
 
-// 停止录制
 function stopRecording(): void {
   isRecording.value = false
+  mainKeyPressed.value = false
+  lastModifierOnlyTap.value = null
+  clearDoubleTapTimer()
   document.removeEventListener('keydown', handleKeyDown)
   document.removeEventListener('keyup', handleKeyUp)
 }
 
-// 处理按键
+function clearDoubleTapTimer(): void {
+  if (doubleTapTimer.value) {
+    clearTimeout(doubleTapTimer.value)
+    doubleTapTimer.value = null
+  }
+}
+
+function confirmShortcut(shortcut: string): void {
+  recordedKeys.value = shortcut.split('+')
+  emit('update:modelValue', shortcut)
+  emit('change', shortcut)
+  stopRecording()
+}
+
 function handleKeyDown(e: KeyboardEvent): void {
   e.preventDefault()
   e.stopPropagation()
 
-  const keys: string[] = []
+  const isModifierKey = MODIFIER_CODES.includes(e.code)
 
-  // 修饰键（根据平台区分 Alt 文案）
+  const keys: string[] = []
   if (e.metaKey) keys.push('Command')
   if (e.ctrlKey) keys.push('Ctrl')
   if (e.altKey) keys.push(props.platform === 'win32' ? 'Alt' : 'Option')
   if (e.shiftKey) keys.push('Shift')
 
-  // 主键 - 使用 e.code 避免 Option 键产生特殊字符
-  if (
-    e.code &&
-    ![
-      'MetaLeft',
-      'MetaRight',
-      'ControlLeft',
-      'ControlRight',
-      'AltLeft',
-      'AltRight',
-      'ShiftLeft',
-      'ShiftRight'
-    ].includes(e.code)
-  ) {
-    // 处理 e.code 转换为友好格式
-    let mainKey = ''
+  if (!isModifierKey) {
+    mainKeyPressed.value = true
+    // 按下了非修饰键，取消双击等待
+    clearDoubleTapTimer()
+    lastModifierOnlyTap.value = null
 
+    let mainKey = ''
     if (e.code.startsWith('Key')) {
-      // KeyA -> A, KeyB -> B
       mainKey = e.code.replace('Key', '')
     } else if (e.code.startsWith('Digit')) {
-      // Digit1 -> 1, Digit2 -> 2
       mainKey = e.code.replace('Digit', '')
     } else if (e.code.startsWith('Numpad')) {
-      // Numpad1 -> Numpad1
       mainKey = e.code
     } else {
-      // Space, Enter, Tab 等
       mainKey = e.code
     }
-
-    if (mainKey) {
-      keys.push(mainKey)
-    }
+    if (mainKey) keys.push(mainKey)
   }
 
   recordedKeys.value = keys
 }
 
-// 按键抬起时确认快捷键
 function handleKeyUp(e: KeyboardEvent): void {
   e.preventDefault()
   e.stopPropagation()
 
-  if (recordedKeys.value.length > 1) {
-    // 至少需要一个修饰键 + 一个主键
-    const newHotkey = recordedKeys.value.join('+')
-    emit('update:modelValue', newHotkey)
-    emit('change', newHotkey)
+  const isModifierKey = MODIFIER_CODES.includes(e.code)
+
+  if (isModifierKey && !mainKeyPressed.value) {
+    // 仅修饰键被按下后松开，没有按其他键
+    // 检查当前是否只有一个修饰键（排除组合修饰键如 Command+Shift）
+    const modifier = getModifierName(e.code)
+    if (!modifier) {
+      stopRecording()
+      return
+    }
+
+    const activeModifiers: string[] = []
+    if (e.metaKey) activeModifiers.push('Command')
+    if (e.ctrlKey) activeModifiers.push('Ctrl')
+    if (e.altKey) activeModifiers.push(props.platform === 'win32' ? 'Alt' : 'Option')
+    if (e.shiftKey) activeModifiers.push('Shift')
+
+    // 只在所有修饰键都释放时才计为一次 tap
+    if (activeModifiers.length > 0) {
+      return
+    }
+
+    const now = Date.now()
+
+    // 检查是否匹配第二次 tap
+    if (
+      lastModifierOnlyTap.value &&
+      lastModifierOnlyTap.value.modifier === modifier &&
+      now - lastModifierOnlyTap.value.time < DOUBLE_TAP_INTERVAL
+    ) {
+      clearDoubleTapTimer()
+      confirmShortcut(`${modifier}+${modifier}`)
+      return
+    }
+
+    // 第一次 tap，开始等待第二次
+    lastModifierOnlyTap.value = { modifier, time: now }
+    recordedKeys.value = ['请再按一次非修饰键...']
+
+    clearDoubleTapTimer()
+    doubleTapTimer.value = setTimeout(() => {
+      // 等待超时，重置状态继续录制
+      lastModifierOnlyTap.value = null
+      doubleTapTimer.value = null
+      if (isRecording.value) {
+        recordedKeys.value = []
+      }
+    }, DOUBLE_TAP_INTERVAL)
+    return
+  }
+
+  // 常规快捷键确认：至少一个修饰键 + 一个主键
+  if (recordedKeys.value.length > 1 && mainKeyPressed.value) {
+    confirmShortcut(recordedKeys.value.join('+'))
+    return
   }
 
   stopRecording()
@@ -135,27 +230,18 @@ function handleKeyUp(e: KeyboardEvent): void {
 function handleHotkeyRecorded(shortcut: string): void {
   if (isRecording.value) {
     console.log('收到后端快捷键录制事件:', shortcut)
-    // 直接设置快捷键
-    recordedKeys.value = shortcut.split('+')
-    emit('update:modelValue', shortcut)
-    emit('change', shortcut)
-    stopRecording()
+    confirmShortcut(shortcut)
   }
 }
 
-// 组件挂载时监听后端快捷键事件
-onMounted(() => {
-  if (window.ztools.internal.onHotkeyRecorded) {
-    window.ztools.internal.onHotkeyRecorded(handleHotkeyRecorded)
-  }
-})
+if (window.ztools.internal.onHotkeyRecorded) {
+  window.ztools.internal.onHotkeyRecorded(handleHotkeyRecorded)
+}
 
-// 组件卸载时清理监听
 onUnmounted(() => {
   stopRecording()
 })
 
-// 暴露方法供父组件调用
 defineExpose({
   stopRecording
 })
