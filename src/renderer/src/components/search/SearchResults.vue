@@ -132,10 +132,17 @@ const windowMatchedActions = computed(() => {
   }
 
   // 使用 commandDataStore 的 searchWindowCommands 进行匹配
-  return commandDataStore.searchWindowCommands({
+  const matched = commandDataStore.searchWindowCommands({
     app: currentWindow.app,
     title: currentWindow.title
   })
+
+  // 如果有搜索内容，在匹配的窗口指令中进一步搜索
+  if (props.searchQuery.trim()) {
+    return commandDataStore.searchInCommands(matched, props.searchQuery)
+  }
+
+  return matched
 })
 
 // 窗口匹配栏的标题（基于当前窗口的 app 名称）
@@ -205,7 +212,7 @@ const navigationGrid = computed(() => {
 
   // 聚合模式
   if (hasSearchContent.value) {
-    // 有搜索：最佳搜索结果 + 最佳匹配 + 匹配推荐
+    // 有搜索：最佳搜索结果 + 最佳匹配 + 匹配推荐 + 窗口匹配
     if (bestSearchResults.value.length > 0) {
       const visibleItems = getVisibleItems(
         bestSearchResults.value,
@@ -235,6 +242,14 @@ const navigationGrid = computed(() => {
       const recommendGrid = arrayToGrid(visibleItems)
       recommendGrid.forEach((row) => {
         sections.push({ type: 'recommendation', items: row })
+      })
+    }
+
+    // 窗口匹配结果（在有搜索内容时也显示）
+    if (windowMatchedActions.value.length > 0) {
+      const windowGrid = arrayToGrid(windowMatchedActions.value)
+      windowGrid.forEach((row) => {
+        sections.push({ type: 'window', items: row })
       })
     }
 

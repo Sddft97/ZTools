@@ -30,19 +30,7 @@
         @update:apps="$emit('update:pinned-order', $event)"
         @update:expanded="$emit('update:pinned-expanded', $event)"
       />
-
-      <!-- 窗口匹配栏 -->
-      <CollapsibleList
-        v-if="windowMatchedActions.length > 0"
-        :title="windowMatchTitle || '窗口命令'"
-        :apps="windowMatchedActions"
-        :selected-index="getAbsoluteIndexForSection('window')"
-        :empty-text="''"
-        :draggable="false"
-        @select="$emit('select-window', $event)"
-      />
     </div>
-
     <!-- 有搜索时：搜索结果 -->
     <div v-if="hasSearchContent" class="search-results">
       <!-- 最佳搜索结果（模糊搜索） -->
@@ -104,6 +92,18 @@
         @enter-app="$emit('enter-main-push-app', group)"
       />
     </div>
+    <div class="content-section">
+        <!-- 窗口匹配栏 -->
+        <CollapsibleList
+          v-if="windowMatchedActions.length > 0"
+          :title="windowMatchTitle || '窗口命令'"
+          :apps="windowMatchedActions"
+          :selected-index="getAbsoluteIndexForSection('window')"
+          :empty-text="''"
+          :draggable="false"
+          @select="$emit('select-window', $event)"
+        />
+      </div>
   </div>
 </template>
 
