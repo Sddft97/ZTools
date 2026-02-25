@@ -54,9 +54,8 @@ onMounted(() => {
   window.ztools.onPluginEnter((action) => {
     console.log('设置插件启动:', action)
 
-    // 根据 feature code 设置页面
+    // 非默认 feature code 才需要跳转页面（默认已在退出时重置为 general）
     const pageMap: Record<string, string> = {
-      settings: 'general',
       shortcuts: 'shortcuts',
       plugins: 'plugins',
       'plugin-market': 'market',
@@ -69,12 +68,14 @@ onMounted(() => {
       'add-dev-plugin': 'plugins'
     }
 
-    const targetPage = pageMap[action.code] || 'general'
-    console.log(`跳转到页面: ${targetPage}`)
-    activePage.value = targetPage
+    const targetPage = pageMap[action.code] || activePage.value
+    if (targetPage !== activePage.value) {
+      console.log(`跳转到页面: ${targetPage}`)
+      activePage.value = targetPage
+    }
 
     // 根据页面决定是否显示搜索框
-    updateSubInput(targetPage)
+    updateSubInput(activePage.value)
 
     // 已安装插件：从 payload 中提取要自动打开详情的插件名称
     if (action.code === 'plugins' && action.payload) {
@@ -104,8 +105,11 @@ onMounted(() => {
     }
   })
 
+  // 退出插件时重置到通用设置页面，避免下次进入时闪烁
   window.ztools.onPluginOut(() => {
-    console.log('设置插件退出')
+    console.log('设置插件退出，重置到通用设置')
+    activePage.value = 'general'
+    searchQuery.value = ''
   })
 
   // 检测操作系统并添加类名
