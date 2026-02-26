@@ -344,6 +344,7 @@ declare global {
       superPanelLaunch: (command: any) => Promise<{ success: boolean; error?: string }>
       superPanelReady: () => void
       superPanelShowPinned: () => void
+      superPanelShowMainWindow: () => void
       updateSuperPanelPinnedOrder: (
         commands: any[]
       ) => Promise<{ success: boolean; error?: string }>

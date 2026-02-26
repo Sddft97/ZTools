@@ -6,6 +6,7 @@ import plist from 'simple-plist'
 import { is } from '@electron-toolkit/utils'
 import { ClipboardMonitor, MouseMonitor, WindowManager } from './native/index.js'
 import databaseAPI from '../api/shared/database.js'
+import windowManager from '../managers/windowManager.js'
 import { applyWindowMaterial, getDefaultWindowMaterial } from '../utils/windowUtils.js'
 
 // 超级面板窗口尺寸
@@ -539,6 +540,12 @@ class SuperPanelManager {
     // 超级面板请求加载固定列表（从搜索模式切换回固定模式）
     ipcMain.on('super-panel:show-pinned', () => {
       this.loadPinnedCommands()
+    })
+
+    // 超级面板头像点击：隐藏超级面板，显示主搜索窗口
+    ipcMain.on('super-panel:show-main-window', () => {
+      this.hideWindow()
+      windowManager.showWindow()
     })
 
     // 更新超级面板固定列表顺序

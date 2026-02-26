@@ -4,8 +4,13 @@
     <template v-if="mode === 'pinned'">
       <!-- 头部：头像 + 超级面板标题 -->
       <div class="search-header pinned-header">
-        <img v-if="avatar" :src="avatar" class="header-avatar" draggable="false" />
-        <div v-else class="header-avatar-placeholder">Z</div>
+        <img
+          :src="avatar"
+          class="header-avatar clickable"
+          draggable="false"
+          title="显示主搜索窗口"
+          @click="showMainWindow"
+        />
         <span class="header-text">超级面板</span>
       </div>
 
@@ -254,6 +259,11 @@ async function handleContextMenu(cmd: CommandItem): Promise<void> {
 // 返回固定列表
 function showPinned(): void {
   window.ztools.superPanelShowPinned()
+}
+
+// 点击头像：隐藏超级面板，显示主搜索窗口
+function showMainWindow(): void {
+  window.ztools.superPanelShowMainWindow()
 }
 
 function getItemKey(item: CommandItem): string {
@@ -572,6 +582,15 @@ onUnmounted(() => {
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
+}
+
+.clickable {
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.clickable:hover {
+  opacity: 0.7;
 }
 
 .header-avatar-placeholder {

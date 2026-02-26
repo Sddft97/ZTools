@@ -326,6 +326,7 @@ const api = {
   superPanelLaunch: (command: any) => ipcRenderer.invoke('super-panel:launch', command),
   superPanelReady: () => ipcRenderer.send('super-panel:ready'),
   superPanelShowPinned: () => ipcRenderer.send('super-panel:show-pinned'),
+  superPanelShowMainWindow: () => ipcRenderer.send('super-panel:show-main-window'),
   // 悬浮球
   floatingBall: {
     setEnabled: (enabled: boolean) => ipcRenderer.invoke('floating-ball:set-enabled', enabled),
@@ -572,6 +573,7 @@ declare global {
       updateSuperPanelPinnedOrder: (
         commands: any[]
       ) => Promise<{ success: boolean; error?: string }>
+      superPanelShowMainWindow: () => void
       unpinSuperPanelCommand: (
         path: string,
         featureCode?: string
