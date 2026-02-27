@@ -13,7 +13,13 @@
         />
         <span class="header-text">超级面板</span>
         <div class="header-spacer" />
-        <div class="header-menu-btn" title="窗口匹配" @click="openWindowMatch">
+        <div
+          class="header-menu-btn"
+          :class="{ 'window-match-blink': windowMatchBlink }"
+          title="窗口匹配"
+          @click="openWindowMatch"
+          @animationend="windowMatchBlink = false"
+        >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <rect
               x="1"
@@ -91,7 +97,13 @@
         </div>
         <span class="header-text">{{ clipboardDescription }}</span>
         <div class="header-spacer" />
-        <div class="header-menu-btn" title="窗口匹配" @click="openWindowMatch">
+        <div
+          class="header-menu-btn"
+          :class="{ 'window-match-blink': windowMatchBlink }"
+          title="窗口匹配"
+          @click="openWindowMatch"
+          @animationend="windowMatchBlink = false"
+        >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <rect
               x="1"
@@ -242,6 +254,8 @@ const showWindowMatch = ref(false)
 const windowMatchResults = ref<CommandItem[]>([])
 const windowMatchSelectedIndex = ref(0)
 const currentWindowInfo = ref<{ app?: string; title?: string } | null>(null)
+// 窗口匹配图标闪动
+const windowMatchBlink = ref(false)
 
 function getThemeColor(colorName: string, isDark: boolean): string {
   const colors: Record<string, { light: string; dark: string }> = {
@@ -360,10 +374,10 @@ function showMainWindow(): void {
 // 打开窗口匹配面板
 function openWindowMatch(): void {
   showWindowMatch.value = true
+  windowMatchBlink.value = false
   windowMatchSelectedIndex.value = 0
-  windowMatchResults.value = []
-  // 发起窗口匹配搜索
-  if (currentWindowInfo.value) {
+  // 如果已有结果（自动搜索过），直接使用；否则发起搜索
+  if (windowMatchResults.value.length === 0 && currentWindowInfo.value) {
     window.ztools.superPanelSearchWindowCommands(
       JSON.parse(JSON.stringify(currentWindowInfo.value))
     )
@@ -518,8 +532,17 @@ onMounted(() => {
     if (data.windowInfo) {
       currentWindowInfo.value = data.windowInfo
     }
-    // 收到新数据时关闭窗口匹配面板
+    // 收到新数据时关闭窗口匹配面板、重置闪动状态
     showWindowMatch.value = false
+    windowMatchBlink.value = false
+    windowMatchResults.value = []
+
+    // 自动发起窗口匹配搜索（用于判断是否需要闪动图标）
+    if (data.windowInfo) {
+      window.ztools.superPanelSearchWindowCommands(
+        JSON.parse(JSON.stringify(data.windowInfo))
+      )
+    }
 
     if (data.type === 'pinned') {
       mode.value = 'pinned'
@@ -544,6 +567,10 @@ onMounted(() => {
   window.ztools.onSuperPanelWindowCommandsData((data: { results: any[] }) => {
     windowMatchResults.value = data.results || []
     windowMatchSelectedIndex.value = 0
+    // 有匹配结果且面板未打开时，触发图标闪动
+    if (data.results?.length > 0 && !showWindowMatch.value) {
+      windowMatchBlink.value = true
+    }
   })
 
   // 加载设置（头像、亚克力透明度、主题色）
@@ -1023,5 +1050,20 @@ onUnmounted(() => {
 .slide-up-enter-from .window-match-panel,
 .slide-up-leave-to .window-match-panel {
   transform: translateY(100%);
+}
+/* ========== 窗口匹配图标闪动 ========== */
+.window-match-blink {
+  animation: blink-highlight 0.5s ease-in-out 3;
+  color: var(--primary-color);
+}
+
+@keyframes blink-highlight {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
 }
 </style>
