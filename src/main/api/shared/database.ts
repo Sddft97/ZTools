@@ -289,7 +289,7 @@ export class DatabaseAPI {
         const existing = lmdbInstance.get(docId)
         const doc: any = {
           _id: docId,
-          data: value
+          value
         }
         if (existing) {
           doc._rev = existing._rev
@@ -309,7 +309,7 @@ export class DatabaseAPI {
 
       try {
         const doc = lmdbInstance.get(docId)
-        event.returnValue = doc ? doc.data : null
+        event.returnValue = doc ? (doc.value ?? doc.data) : null
       } catch (error: unknown) {
         console.error('[Database] dbStorage.getItem 失败:', error)
         event.returnValue = null
