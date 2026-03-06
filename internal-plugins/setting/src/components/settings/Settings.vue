@@ -55,7 +55,12 @@
       />
 
       <!-- 本地启动 -->
-      <LocalLaunch v-if="activeMenu === 'local-launch'" :search-query="props.searchQuery" />
+      <LocalLaunch
+        v-if="activeMenu === 'local-launch'"
+        :search-query="props.searchQuery"
+        :pending-files="props.pendingLocalLaunchFiles || []"
+        @pending-files-consumed="handlePendingLocalLaunchFilesConsumed"
+      />
 
       <!-- AI 模型管理 -->
       <AiModels v-if="activeMenu === 'ai-models'" :search-query="props.searchQuery" />
@@ -107,6 +112,7 @@ interface Props {
   installPluginFilePath?: string
   addDevPluginFilePath?: string
   autoOpenPluginName?: string
+  pendingLocalLaunchFiles?: string[]
 }
 
 const props = defineProps<Props>()
@@ -117,6 +123,7 @@ const emit = defineEmits<{
   'auto-open-consumed': []
   'add-dev-consumed': []
   'update:installPluginFilePath': [value: string]
+  'local-launch-files-consumed': []
 }>()
 
 // 菜单项类型
@@ -228,6 +235,11 @@ function handlePluginInstalled(pluginName: string): void {
   emit('update:installPluginFilePath', '')
   localAutoOpenPluginName.value = pluginName
   activeMenu.value = 'plugins'
+}
+
+// 处理 LocalLaunch 消费完待添加路径后的清理
+function handlePendingLocalLaunchFilesConsumed(): void {
+  emit('local-launch-files-consumed')
 }
 </script>
 

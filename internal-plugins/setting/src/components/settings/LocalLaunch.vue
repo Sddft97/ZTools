@@ -193,13 +193,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useToast } from '../../composables/useToast'
 import { weightedSearch } from '../../utils/weightedSearch'
 import AdaptiveIcon from '../common/AdaptiveIcon.vue'
 
 const props = defineProps<{
   searchQuery?: string
+  pendingFiles?: string[]
+}>()
+
+const emit = defineEmits<{
+  'pending-files-consumed': []
 }>()
 
 const { success, error, confirm } = useToast()
@@ -221,6 +226,10 @@ const loading = ref(true)
 const isAdding = ref(false)
 const isDeleting = ref(false)
 const isDragging = ref(false)
+// 防止重复消费同一批待添加路径
+const lastPendingFilesKey = ref('')
+// 防止并发消费待添加路径
+const isConsumingPending = ref(false)
 
 const filteredShortcuts = computed(() =>
   weightedSearch(shortcuts.value, props.searchQuery || '', [
@@ -267,10 +276,10 @@ async function handleAdd(type: 'file' | 'folder'): Promise<void> {
   }
 }
 
-// 添加拖拽的文件
+// 添加单个路径到本地启动（拖拽与主输入框复用）
 async function addDroppedFile(filePath: string): Promise<void> {
   try {
-    // 调用内部 API 添加文件（需要新增一个接受路径参数的 API）
+    // 调用内部 API 按路径添加文件/文件夹/应用
     const result = await window.ztools.internal.localShortcuts.addByPath(filePath)
     if (result.success) {
       success('添加成功')
@@ -281,6 +290,49 @@ async function addDroppedFile(filePath: string): Promise<void> {
   } catch (err) {
     console.error('添加失败:', err)
     error('添加失败')
+  }
+}
+
+// 规范化待添加路径，去空、去重，避免重复触发
+function normalizePendingFiles(paths: string[]): string[] {
+  return Array.from(
+    new Set(paths.map((path) => path.trim()).filter((path) => Boolean(path)))
+  )
+}
+
+// 消费来自 onPluginEnter 的待添加路径，循环调用 addByPath
+async function consumePendingFiles(paths: string[]): Promise<void> {
+  if (isConsumingPending.value) {
+    console.info('[LocalLaunchAdd] 正在消费上一批路径，跳过本次触发')
+    return
+  }
+
+  const normalizedPaths = normalizePendingFiles(paths)
+  if (normalizedPaths.length === 0) {
+    emit('pending-files-consumed')
+    return
+  }
+
+  const currentKey = normalizedPaths.join('||')
+  if (currentKey === lastPendingFilesKey.value) {
+    console.info('[LocalLaunchAdd] 检测到重复批次，跳过自动添加:', normalizedPaths)
+    emit('pending-files-consumed')
+    return
+  }
+
+  lastPendingFilesKey.value = currentKey
+  isConsumingPending.value = true
+
+  try {
+    console.info('[LocalLaunchAdd] 开始消费待添加路径:', normalizedPaths)
+    for (const filePath of normalizedPaths) {
+      console.info('[LocalLaunchAdd] addByPath 入参:', filePath)
+      await addDroppedFile(filePath)
+    }
+  } finally {
+    isConsumingPending.value = false
+    emit('pending-files-consumed')
+    console.info('[LocalLaunchAdd] 本批路径消费完成')
   }
 }
 
@@ -431,6 +483,16 @@ function getTypeLabel(type: string): string {
 onMounted(() => {
   loadShortcuts()
 })
+
+// 监听主输入框注入的待添加路径，进入页面后自动消费
+watch(
+  () => props.pendingFiles,
+  (paths) => {
+    if (!paths || paths.length === 0) return
+    void consumePendingFiles(paths)
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>

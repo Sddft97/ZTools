@@ -17,6 +17,8 @@ const installPluginFilePath = ref<string>('')
 const addDevPluginFilePath = ref<string>('')
 // 自动打开的插件详情名称（从外部启动参数传入）
 const autoOpenPluginName = ref<string>('')
+// 待添加到本地启动的路径列表（来自主输入框 files payload）
+const pendingLocalLaunchFiles = ref<string[]>([])
 
 // 各页面搜索框 placeholder，未列出的页面不显示搜索框
 const pagePlaceholders: Record<string, string> = {
@@ -72,6 +74,7 @@ onMounted(() => {
       sync: 'sync',
       'install-plugin': 'install-plugin',
       'add-dev-plugin': 'plugins',
+      'local-launch-add': 'local-launch',
       about: 'about'
     }
 
@@ -109,6 +112,17 @@ onMounted(() => {
       if (files.length > 0 && files[0].path) {
         addDevPluginFilePath.value = files[0].path
       }
+    }
+
+    // 添加到本地启动：从 files payload 中提取多个路径并交给 LocalLaunch 消费
+    if (action.code === 'local-launch-add' && action.payload) {
+      const files = Array.isArray(action.payload) ? action.payload : []
+      const paths = files
+        .map((file: { path?: string }) => file.path?.trim())
+        .filter((path): path is string => Boolean(path))
+
+      console.info('[LocalLaunchAdd] 收到待添加路径:', paths)
+      pendingLocalLaunchFiles.value = paths
     }
   })
 
@@ -154,9 +168,11 @@ onMounted(() => {
     :install-plugin-file-path="installPluginFilePath"
     :add-dev-plugin-file-path="addDevPluginFilePath"
     :auto-open-plugin-name="autoOpenPluginName"
+    :pending-local-launch-files="pendingLocalLaunchFiles"
     @update:install-plugin-file-path="installPluginFilePath = $event"
     @auto-open-consumed="autoOpenPluginName = ''"
     @add-dev-consumed="addDevPluginFilePath = ''"
+    @local-launch-files-consumed="pendingLocalLaunchFiles = []"
   />
   <!-- 全局Toast组件 -->
   <Toast

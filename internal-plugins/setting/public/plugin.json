@@ -101,6 +101,19 @@
       "cmds": ["关于 ZTools"]
     },
     {
+      "code": "local-launch-add",
+      "explain": "添加到本地启动",
+      "icon": "logo.png",
+      "cmds": [
+        {
+          "type": "files",
+          "label": "添加到本地启动",
+          "fileType": "all",
+          "maxLength": 99
+        }
+      ]
+    },
+    {
       "code": "exit",
       "explain": "退出 ZTools",
       "icon": "logo.png",
