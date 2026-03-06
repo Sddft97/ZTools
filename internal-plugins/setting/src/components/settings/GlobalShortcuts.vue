@@ -244,19 +244,37 @@ const baseBuiltInShortcuts = [
   {
     id: 'builtin-detach',
     shortcut: 'MOD+D',
-    target: '分离窗口',
+    target: '分离插件到独立窗口',
     enabled: true
   },
   {
     id: 'builtin-search',
     shortcut: 'MOD+F',
-    target: '固定搜索框的文本，搜索匹配的命令',
+    target: '固定搜索框的文本，进行二次筛选',
     enabled: true
   },
   {
     id: 'builtin-settings',
     shortcut: 'MOD+,',
     target: '打开设置',
+    enabled: true
+  },
+  {
+    id: 'builtin-kill-plugin',
+    shortcut: 'MOD+Q',
+    target: '终止当前插件运行',
+    enabled: true
+  },
+  {
+    id: 'builtin-close-plugin',
+    shortcut: 'MOD+W',
+    target: '关闭插件/隐藏窗口',
+    enabled: true
+  },
+  {
+    id: 'builtin-devtools',
+    shortcut: 'DEVTOOLS',
+    target: '打开/关闭开发者工具',
     enabled: true
   }
 ]
@@ -266,10 +284,20 @@ const builtInAppShortcuts = computed<GlobalShortcut[]>(() => {
   const modifier = isMac.value ? 'Command' : isWindows.value ? 'Ctrl' : ''
   if (!modifier) return []
   
-  return baseBuiltInShortcuts.map(item => ({
-    ...item,
-    shortcut: item.shortcut.replace('MOD', modifier)
-  }))
+  return baseBuiltInShortcuts.map(item => {
+    // 开发者工具快捷键需要特殊处理
+    if (item.shortcut === 'DEVTOOLS') {
+      return {
+        ...item,
+        shortcut: isMac.value ? 'Option+Command+I' : 'Ctrl+Shift+I'
+      }
+    }
+    
+    return {
+      ...item,
+      shortcut: item.shortcut.replace('MOD', modifier)
+    }
+  })
 })
 
 // Tab 切换
