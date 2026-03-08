@@ -1,0 +1,588 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useToast, AdaptiveIcon, DetailPanel } from '@/components'
+import { weightedSearch } from '@/utils'
+import { useZtoolsSubInput } from '@/composables'
+
+const { success, error, confirm } = useToast()
+
+interface PluginData {
+  pluginName: string
+  pluginTitle?: string | null
+  docCount: number
+  attachmentCount: number
+  logo: string | null
+}
+
+interface DocItem {
+  key: string
+  type: 'document' | 'attachment'
+}
+
+// 页面层级类型
+type PageLevel = 'main' | 'docList' | 'docDetail'
+
+const pluginDataList = ref<PluginData[]>([])
+const isLoaded = ref(false)
+
+// 获取插件显示名称（优先 title，回退到 name）
+function getDisplayName(data: PluginData | string): string {
+  if (typeof data === 'string') {
+    const found = pluginDataList.value.find((p) => p.pluginName === data)
+    return found?.pluginTitle || data
+  }
+  return data.pluginTitle || data.pluginName
+}
+
+const { value: searchQuery } = useZtoolsSubInput('', '搜索数据...')
+
+const filteredPluginDataList = computed(() =>
+  weightedSearch(pluginDataList.value, searchQuery.value || '', [
+    { value: (p) => getDisplayName(p), weight: 10 },
+    { value: (p) => p.pluginName || '', weight: 3 }
+  ])
+)
+
+const currentLevel = ref<PageLevel>('main') // 当前页面层级
+const currentPluginName = ref('')
+const docKeys = ref<DocItem[]>([])
+const selectedDocKey = ref('')
+const currentDocContent = ref<any>(null)
+const currentDocType = ref<'document' | 'attachment'>('document')
+const docListAnimation = ref('slide') // 二级页面的动画名称，完全手动控制
+
+// 二级页面的动画类
+const docListAnimationClass = computed(() => {
+  return `detail-animate-${docListAnimation.value}`
+})
+
+// 格式化文档内容
+const formattedDocContent = computed(() => {
+  if (!currentDocContent.value) return ''
+  return JSON.stringify(currentDocContent.value, null, 2)
+})
+
+// 加载插件数据统计
+async function loadPluginData(): Promise<void> {
+  try {
+    const result = await window.ztools.internal.getPluginDataStats()
+    if (result.success) {
+      pluginDataList.value = result.data || []
+    }
+  } catch (error) {
+    console.error('加载插件数据失败:', error)
+  } finally {
+    isLoaded.value = true
+  }
+}
+
+// 查看插件文档
+async function viewPluginDocs(pluginName: string): Promise<void> {
+  currentPluginName.value = pluginName
+  docListAnimation.value = 'slide' // 从一级进入二级，用 slide（从右进入）
+  currentLevel.value = 'docList'
+
+  try {
+    const result = await window.ztools.internal.getPluginDocKeys(pluginName)
+    if (result.success) {
+      docKeys.value = result.data || []
+    }
+  } catch (error) {
+    console.error('加载文档列表失败:', error)
+  }
+}
+
+// 查看文档内容
+async function viewDocContent(key: string): Promise<void> {
+  selectedDocKey.value = key
+  docListAnimation.value = 'slide-reverse' // 进入三级，二级要向左离开
+  currentLevel.value = 'docDetail'
+
+  try {
+    const result = await window.ztools.internal.getPluginDoc(currentPluginName.value, key)
+    if (result.success) {
+      currentDocContent.value = result.data
+      currentDocType.value = result.type || 'document'
+    }
+  } catch (error) {
+    console.error('加载文档内容失败:', error)
+  }
+}
+
+// 关闭文档列表弹窗
+function closeDocListModal(): void {
+  docListAnimation.value = 'slide' // 返回一级，用 slide（向右离开）
+  currentLevel.value = 'main'
+  currentPluginName.value = ''
+  docKeys.value = []
+  selectedDocKey.value = ''
+}
+
+// 关闭文档详情弹窗
+function closeDocDetailModal(): void {
+  docListAnimation.value = 'slide-reverse' // 从三级返回二级，二级从左进入
+  currentLevel.value = 'docList'
+  selectedDocKey.value = ''
+  currentDocContent.value = null
+}
+
+// 清空插件数据
+async function handleClearData(): Promise<void> {
+  if (!currentPluginName.value) return
+
+  // 禁止清空主程序数据
+  if (currentPluginName.value === 'ZTOOLS') {
+    error('无法清空主程序数据，这可能导致应用异常')
+    return
+  }
+
+  // 确认操作
+  const confirmed = await confirm({
+    title: '清空数据',
+    message: `确定要清空插件"${getDisplayName(currentPluginName.value)}"的所有数据吗？\n\n此操作将删除该插件的所有文档，无法恢复。`,
+    type: 'danger',
+    confirmText: '清空',
+    cancelText: '取消'
+  })
+  if (!confirmed) return
+
+  try {
+    const result = await window.ztools.internal.clearPluginData(currentPluginName.value)
+    if (result.success) {
+      success(`已成功清空 ${result.deletedCount} 个文档`)
+      // 关闭弹窗
+      closeDocListModal()
+      // 重新加载插件数据统计
+      await loadPluginData()
+    } else {
+      error(`清空数据失败: ${result.error}`)
+    }
+  } catch (err) {
+    console.error('清空数据失败:', err)
+    error('清空数据失败')
+  }
+}
+
+// 处理 ESC 按键
+function handleKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    if (currentLevel.value === 'docDetail') {
+      e.stopPropagation()
+      closeDocDetailModal()
+    } else if (currentLevel.value === 'docList') {
+      e.stopPropagation()
+      closeDocListModal()
+    }
+  }
+}
+
+onMounted(() => {
+  loadPluginData()
+  window.addEventListener('keydown', handleKeydown, true)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown, true)
+})
+</script>
+
+<template>
+  <div class="data-management">
+    <!-- 主内容：插件列表 -->
+    <Transition name="list-slide">
+      <div v-show="currentLevel === 'main'" class="main-content">
+        <div v-if="isLoaded && filteredPluginDataList.length === 0" class="empty">
+          <p>暂无插件数据</p>
+        </div>
+
+        <div v-else-if="isLoaded && filteredPluginDataList.length > 0" class="plugin-list">
+          <div
+            v-for="pluginData in filteredPluginDataList"
+            :key="pluginData.pluginName"
+            class="card plugin-card"
+            :class="{ 'ztools-card': pluginData.pluginName === 'ZTOOLS' }"
+            @click="viewPluginDocs(pluginData.pluginName)"
+          >
+            <!-- 主程序特殊图标 -->
+            <div
+              v-if="pluginData.pluginName === 'ZTOOLS'"
+              class="plugin-icon-placeholder ztools-icon"
+            >
+              <div class="i-z-database font-size-24px" />
+            </div>
+            <!-- 插件图标 -->
+            <AdaptiveIcon
+              v-else-if="pluginData.logo"
+              :src="pluginData.logo"
+              class="plugin-icon"
+              alt="插件图标"
+              draggable="false"
+            />
+            <div v-else class="plugin-icon-placeholder">
+              <div class="i-z-plugin font-size-24px"></div>
+            </div>
+
+            <div class="plugin-info">
+              <h3 class="plugin-name">
+                {{ getDisplayName(pluginData) }}
+              </h3>
+              <span class="doc-count"
+                >{{ pluginData.docCount }} 个文档 / {{ pluginData.attachmentCount }} 个附件</span
+              >
+            </div>
+
+            <button class="icon-btn" title="查看文档">
+              <div class="i-z-search font-size-18px" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 二级页面：文档列表 -->
+    <DetailPanel
+      v-show="currentLevel === 'docList'"
+      :title="`${getDisplayName(currentPluginName)} - 文档列表`"
+      :class="docListAnimationClass"
+      @back="closeDocListModal"
+    >
+      <div v-if="currentPluginName !== 'ZTOOLS'" class="detail-header-actions">
+        <button class="btn btn-danger" @click="handleClearData">
+          <div class="i-z-trash font-size-16px" />
+          <span>清空所有数据</span>
+        </button>
+      </div>
+      <div v-if="docKeys.length === 0" class="empty">暂无文档</div>
+      <div v-else class="doc-list">
+        <div
+          v-for="docItem in docKeys"
+          :key="docItem.key"
+          class="card doc-card"
+          :class="{ active: selectedDocKey === docItem.key }"
+          @click="viewDocContent(docItem.key)"
+        >
+          <span class="doc-key">{{ docItem.key }}</span>
+          <span class="doc-type-badge" :class="`type-${docItem.type}`">
+            {{ docItem.type === 'document' ? '文档' : '附件' }}
+          </span>
+        </div>
+      </div>
+    </DetailPanel>
+
+    <!-- 三级页面：文档详情 -->
+    <Transition name="slide">
+      <DetailPanel v-if="currentLevel === 'docDetail'" title="文档详情" @back="closeDocDetailModal">
+        <div class="doc-detail-content">
+          <div class="doc-key-display">
+            <span class="label">Key:</span>
+            <span class="value">{{ selectedDocKey }}</span>
+          </div>
+          <div class="doc-key-display">
+            <span class="label">类型:</span>
+            <span class="value type-badge" :class="`type-${currentDocType}`">
+              {{ currentDocType === 'document' ? '文档' : '附件' }}
+            </span>
+          </div>
+          <div class="doc-content">
+            <pre>{{ formattedDocContent }}</pre>
+          </div>
+        </div>
+      </DetailPanel>
+    </Transition>
+  </div>
+</template>
+
+<style scoped>
+.data-management {
+  position: relative; /* 使详情面板能够覆盖该区域 */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* 防止滑动时出现滚动条 */
+  background: var(--bg-color);
+}
+
+/* 主内容区 */
+.main-content {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px;
+}
+
+/* 列表滑动动画 */
+.list-slide-enter-active {
+  transition:
+    transform 0.2s ease-out,
+    opacity 0.15s ease;
+}
+
+.list-slide-leave-active {
+  transition:
+    transform 0.2s ease-in,
+    opacity 0.15s ease;
+}
+
+.list-slide-enter-from {
+  transform: translateX(-100%);
+  opacity: 0;
+}
+
+.list-slide-enter-to {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.list-slide-leave-from {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.list-slide-leave-to {
+  transform: translateX(-100%);
+  opacity: 0;
+}
+
+/* 二级页面进入动画（不使用 Transition，直接用 CSS animation） */
+.detail-animate-slide {
+  animation: slideInFromRight 0.2s ease-out;
+}
+
+.detail-animate-slide-reverse {
+  animation: slideInFromLeft 0.2s ease-out;
+}
+
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.plugin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plugin-card {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.plugin-card:hover {
+  background: var(--hover-bg);
+  transform: translateX(2px);
+}
+
+/* 主程序数据卡片特殊样式 */
+.plugin-card.ztools-card .plugin-name {
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.plugin-icon-placeholder.ztools-icon {
+  background: var(--primary-color);
+  color: white;
+  opacity: 1;
+}
+
+.plugin-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  margin-right: 14px;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.plugin-icon-placeholder {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  margin-right: 14px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--active-bg);
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.plugin-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.plugin-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-color);
+  margin-bottom: 4px;
+}
+
+.doc-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.plugin-card .icon-btn {
+  color: var(--primary-color);
+}
+
+.plugin-card .icon-btn:hover {
+  background: var(--primary-light-bg);
+  color: var(--primary-color);
+}
+
+.detail-header-actions {
+  padding: 16px;
+  border-bottom: 1px solid var(--divider-color);
+}
+
+.doc-list {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.doc-detail-content {
+  padding: 16px;
+}
+
+.doc-card {
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.doc-card:hover {
+  background: var(--hover-bg);
+  transform: translateX(2px);
+}
+
+.doc-card.active {
+  background: var(--active-bg);
+}
+
+.doc-key {
+  flex: 1;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-type-badge {
+  margin-left: 12px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.doc-type-badge.type-document {
+  background: var(--primary-light-bg);
+  color: var(--primary-color);
+}
+
+.doc-type-badge.type-attachment {
+  background: var(--purple-light-bg);
+  color: var(--purple-color);
+}
+
+.doc-key-display {
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: var(--bg-color);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.doc-key-display .label {
+  color: var(--text-secondary);
+  margin-right: 8px;
+  font-weight: 600;
+}
+
+.doc-key-display .value {
+  color: var(--text-primary);
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.doc-key-display .value.type-badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+.doc-key-display .value.type-badge.type-document {
+  background: var(--primary-light-bg);
+  color: var(--primary-color);
+}
+
+.doc-key-display .value.type-badge.type-attachment {
+  background: var(--purple-light-bg);
+  color: var(--purple-color);
+}
+
+.doc-content {
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  user-select: text;
+  cursor: text;
+}
+
+.doc-content pre {
+  margin: 0;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
+</style>

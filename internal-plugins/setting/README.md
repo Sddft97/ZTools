@@ -1,281 +1,121 @@
-# setting
+# Setting 内置插件（`internal-plugins/setting`）
 
-> A ZTools plugin
+ZTools 的设置中心子项目，负责承载“通用设置、快捷键、插件管理、插件市场、同步、数据、调试、关于”等系统级配置页面。
 
-这是一个使用 **Vue 3 + Vite + TypeScript** 构建的 ZTools 插件。
+这是一个可独立开发和构建的前端插件工程，通过 `plugin.json` 接入宿主，并通过 `window.ztools` / `window.ztools.internal` 与桌面端能力通信。
 
-## ✨ 功能特性
+## 技术栈
 
-### 📌 已包含的示例功能
+- `Vue 3`
+- `TypeScript`
+- `Vue Router`（Hash 路由）
+- `Vite`
+- `UnoCSS`
 
-- **Hello** - 基础功能指令示例
-  - 触发指令：`你好` / `hello`
-  - 展示简单的 Vue 组件界面
+## 功能范围（当前路由）
 
-- **读文件** - 文件读取功能示例
-  - 功能指令：`读文件`
-  - 匹配指令：支持拖拽文件触发
-  - 演示如何使用 Node.js 能力读取文件内容
+菜单页（含左侧导航）：
 
-- **保存为文件** - 文件写入功能示例
-  - 匹配指令：任意文本/图片 → `保存为文件`
-  - 演示如何将剪贴板内容保存为文件
+- `GeneralSetting`：通用设置
+- `Shortcuts`：快捷键
+- `Plugins`：已安装插件
+- `Market`：插件市场
+- `AiModels`：AI 模型
+- `WebSearch`：网页快开
+- `Data`：我的数据
+- `AllCommands`：所有指令
+- `LocalLaunch`：本地启动
+- `Sync`：WebDAV 同步
+- `Debug`：调试日志
+- `HttpService`：HTTP 服务
+- `About`：关于
 
-## 📁 项目结构
+特殊页面（非菜单项）：
 
+- `PluginInstaller`：插件安装流程页
+
+## 宿主事件与路由分发
+
+入口在 `src/main.ts`：
+
+1. 统一监听 `ztools.onPluginEnter`
+2. 将事件转为 `ZtoolsCodeEvent` 并派发到 `window`
+3. 基础事件处理器监听 `ui.router`，按参数跳转到对应页面
+4. 业务事件在 `src/events/allCodeEvent.ts` 注册（如安装插件、添加开发中插件、插件市场搜索等）
+
+这套机制的目标是把“入口事件解析”和“页面业务逻辑”解耦，新增 code 事件时只需在事件模块中扩展。
+
+## 主题初始化
+
+`SettingHone.vue` 在挂载时会读取 `settings-general`，并统一应用：
+
+- `theme`：`system | light | dark`
+- `primaryColor`：`blue | purple | green | orange | red | pink | custom`
+- `customColor`
+
+主题工具集中在 `src/utils/themeUtils.ts`，用于避免各页面重复实现主题逻辑。
+
+## 项目结构
+
+```text
+internal-plugins/setting
+├─ public/
+│  ├─ plugin.json            # 插件声明（features/code/development main）
+│  └─ preload/package.json
+├─ src/
+│  ├─ components/            # 布局与通用组件（含 SettingHone、Toast、Dialog 等）
+│  ├─ views/                 # 各设置页面
+│  ├─ router/                # 路由与菜单定义
+│  ├─ events/                # code 事件模型与分发
+│  ├─ composables/           # 复用逻辑
+│  ├─ utils/                 # 工具函数（含主题工具、搜索工具等）
+│  ├─ assets/                # 图标与样式资源
+│  └─ main.ts                # 应用入口
+├─ vite.config.ts
+└─ package.json
 ```
-.
-├── public/
-│   ├── logo.png              # 插件图标
-│   ├── plugin.json           # 插件配置文件
-│   └── preload/              # Preload 脚本目录
-│       ├── package.json      # Preload 依赖配置
-│       └── services.js       # Node.js 能力扩展
-├── src/
-│   ├── main.ts               # 入口文件
-│   ├── main.css              # 全局样式
-│   ├── App.vue               # 根组件
-│   ├── env.d.ts              # 类型声明
-│   ├── Hello/                # Hello 功能组件
-│   │   └── index.vue
-│   ├── Read/                 # 读文件功能组件
-│   │   └── index.vue
-│   └── Write/                # 写文件功能组件
-│       └── index.vue
-├── index.html                # HTML 模板
-├── vite.config.js            # Vite 配置
-├── tsconfig.json             # TypeScript 配置
-├── package.json              # 项目依赖
-└── README.md                 # 项目文档
-```
 
-## 🚀 快速开始
+## 本地开发
 
-### 安装依赖
+在仓库根目录执行：
 
 ```bash
-npm install
+pnpm -C "internal-plugins/setting" dev
 ```
 
-### 开发模式
+默认端口是 `5177`（`vite.config.ts` 已设置 `strictPort: true`）。
+
+`public/plugin.json` 的开发入口已指向：
+
+```text
+http://localhost:5177
+```
+
+如果你从主工程整体启动，也可直接运行根目录的开发命令。
+
+## 构建
 
 ```bash
-npm run dev
+pnpm -C "internal-plugins/setting" build
 ```
 
-开发服务器将在 `http://localhost:5173` 启动。ZTools 会自动加载开发版本。
+构建流程：
 
-### 构建生产版本
+- `vue-tsc` 类型检查
+- `vite build` 产物构建
 
-```bash
-npm run build
-```
+输出目录：`internal-plugins/setting/dist`
 
-构建产物将输出到 `dist/` 目录。
+## 扩展约定（新增设置页）
 
-## 📖 开发指南
+1. 在 `src/views` 新建页面组件
+2. 在 `src/router/router.ts` 注册路由（如需出现在左侧菜单，补充 `meta.menu`）
+3. 如需命令入口，从 `public/plugin.json` 增加 `features.code`
+4. 如需处理自定义 code 事件，在 `src/events/allCodeEvent.ts` 通过 `addZtoolsCodeEventListener` 注册
 
-### 1. 修改插件配置
+## 开发原则
 
-编辑 `public/plugin.json` 文件：
-
-```json
-{
-  "name": "你的插件名称",
-  "description": "插件描述",
-  "author": "作者名称",
-  "version": "1.0.0",
-  "features": [
-    // 添加你的功能配置
-  ]
-}
-```
-
-### 2. 创建新功能
-
-#### 步骤 1: 创建 Vue 组件
-
-在 `src/` 目录下创建新的功能组件：
-
-```vue
-<!-- src/MyFeature/index.vue -->
-<template>
-  <div class="my-feature">
-    <h1>{{ title }}</h1>
-    <!-- 你的组件内容 -->
-  </div>
-</template>
-
-<script setup lang="ts">
-import { ref } from 'vue'
-
-const title = ref('我的新功能')
-</script>
-
-<style scoped>
-.my-feature {
-  padding: 20px;
-}
-</style>
-```
-
-#### 步骤 2: 注册路由
-
-在 `src/App.vue` 中添加路由：
-
-```vue
-<script setup lang="ts">
-import MyFeature from './MyFeature/index.vue'
-
-const routes = {
-  hello: Hello,
-  read: Read,
-  write: Write,
-  myfeature: MyFeature // 添加新路由
-}
-</script>
-```
-
-#### 步骤 3: 配置功能
-
-在 `plugin.json` 中添加功能配置：
-
-```json
-{
-  "code": "myfeature",
-  "explain": "我的新功能",
-  "icon": "logo.png",
-  "cmds": ["触发指令"]
-}
-```
-
-### 3. 使用 Node.js 能力
-
-#### 扩展 Preload 服务
-
-编辑 `public/preload/services.js`：
-
-```javascript
-const fs = require('fs')
-const path = require('path')
-
-module.exports = {
-  // 示例：读取文件
-  readFile: (filePath) => {
-    return fs.readFileSync(filePath, 'utf-8')
-  },
-
-  // 添加你的服务
-  myService: (params) => {
-    // 实现你的逻辑
-    return result
-  }
-}
-```
-
-#### 在 Vue 组件中调用
-
-```vue
-<script setup lang="ts">
-const handleRead = async () => {
-  try {
-    const content = await window.services.readFile('/path/to/file')
-    console.log(content)
-  } catch (error) {
-    console.error('读取失败:', error)
-  }
-}
-</script>
-```
-
-### 4. 使用 ZTools API
-
-```vue
-<script setup lang="ts">
-// 获取剪贴板内容
-const text = await window.ztools.getClipboardContent()
-
-// 隐藏主窗口
-window.ztools.hideMainWindow()
-
-// 显示提示
-window.ztools.showTip('操作成功')
-
-// 更多 API 请参考官方文档
-</script>
-```
-
-## 🎨 样式开发
-
-### 使用 CSS 变量
-
-ZTools 提供了一套 CSS 变量用于主题适配：
-
-```css
-.my-component {
-  background: var(--bg-color);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-}
-```
-
-### 暗色模式支持
-
-```css
-@media (prefers-color-scheme: dark) {
-  .my-component {
-    /* 暗色模式样式 */
-  }
-}
-```
-
-## 📦 构建与发布
-
-### 1. 构建插件
-
-```bash
-npm run build
-```
-
-### 2. 测试构建产物
-
-将 `dist/` 目录中的所有文件复制到 ZTools 插件目录进行测试。
-
-### 3. 发布到插件市场
-
-1. 确保 `plugin.json` 中的信息完整准确
-2. 准备好插件截图和详细说明
-3. 访问 ZTools 插件市场提交插件
-
-## 📚 相关资源
-
-- [ZTools 官方文档](https://github.com/ztool-center/ztools)
-- [ZTools API 文档](https://github.com/ztool-center/ztools-api-types)
-- [Vue 3 文档](https://vuejs.org/)
-- [Vite 文档](https://vitejs.dev/)
-
-## ❓ 常见问题
-
-### Q: 如何调试插件？
-
-A: 使用 `npm run dev` 启动开发服务器，在插件界面中点击插件头像图标，在弹出的菜单中选择"打开开发者工具"进行调试。
-
-### Q: 如何访问 Node.js 能力？
-
-A: 通过 `public/preload/services.js` 文件扩展服务，然后在组件中使用 `window.services` 调用。
-
-### Q: 插件图标不显示？
-
-A: 确保 `public/logo.png` 文件存在，且在 `plugin.json` 中正确配置了 `logo` 字段。
-
-### Q: 如何处理大文件上传？
-
-A: 建议使用 Node.js 流式处理，在 preload 脚本中实现文件分块处理逻辑。
-
-## 📄 开源协议
-
-MIT License
-
----
-
-**祝你开发愉快！** 🎉
+- KISS：页面只处理展示和交互，复杂逻辑下沉到 `composables` / `utils`
+- DRY：跨页面能力优先抽到公共组件与工具模块
+- YAGNI：只实现当前设置项需求，不预埋未使用的配置链路
+- SOLID：事件分发、路由、视图、工具函数按职责分离，避免耦合膨胀

@@ -8,12 +8,20 @@
     "build": "vue-tsc && vite build"
   },
   "dependencies": {
-    "vue": "^3.5.13"
+    "vue": "^3.5.13",
+    "vue-router": "^4.6.4",
+    "@vueuse/core": "^14.2.1"
   },
   "devDependencies": {
+    "@iconify/utils": "^3.1.0",
+    "@types/node": "^25.3.5",
+    "@unocss/preset-icons": "^66.6.6",
+    "@unocss/transformer-directives": "^66.6.6",
     "@vitejs/plugin-vue": "^5.2.1",
     "@ztools-center/ztools-api-types": "^1.0.1",
+    "less": "^4.5.1",
     "typescript": "^5.3.0",
+    "unocss": "^66.6.6",
     "vite": "^6.0.11",
     "vue-tsc": "^2.0.0"
   }

@@ -12,31 +12,31 @@
   },
   "features": [
     {
-      "code": "settings",
+      "code": "ui.router?router=GeneralSetting",
       "explain": "应用设置",
       "icon": "logo.png",
       "cmds": ["通用设置"]
     },
     {
-      "code": "shortcuts",
+      "code": "ui.router?router=Shortcuts",
       "explain": "快捷键",
       "icon": "logo.png",
       "cmds": ["快捷键"]
     },
     {
-      "code": "plugins",
+      "code": "ui.router?router=Plugins",
       "explain": "已安装插件",
       "icon": "logo.png",
       "cmds": ["已安装插件"]
     },
     {
-      "code": "plugin-market",
+      "code": "ui.router?router=Market",
       "explain": "插件市场",
       "icon": "logo.png",
       "cmds": ["插件市场"]
     },
     {
-      "code": "plugin-market-search",
+      "code": "function.plugin-market-search",
       "explain": "插件市场搜索",
       "icon": "logo.png",
       "cmds": [
@@ -49,39 +49,7 @@
       ]
     },
     {
-      "code": "data",
-      "explain": "我的数据",
-      "icon": "logo.png",
-      "cmds": ["我的数据"]
-    },
-    {
-      "code": "all-commands",
-      "explain": "所有指令",
-      "icon": "logo.png",
-      "cmds": ["所有指令"]
-    },
-    {
-      "code": "sync",
-      "explain": "WebDAV 同步",
-      "icon": "logo.png",
-      "cmds": ["WebDAV 同步"]
-    },
-    {
-      "code": "install-plugin",
-      "explain": "安装插件",
-      "icon": "logo.png",
-      "cmds": [
-        {
-          "type": "files",
-          "label": "安装插件",
-          "fileType": "file",
-          "match": "/\\.tool-plugin$/i",
-          "maxLength": 1
-        }
-      ]
-    },
-    {
-      "code": "add-dev-plugin",
+      "code": "function.add-dev-plugin?router=Plugins",
       "explain": "添加开发中插件",
       "icon": "logo.png",
       "cmds": [
@@ -95,13 +63,45 @@
       ]
     },
     {
-      "code": "about",
+      "code": "function.install-plugin?router=PluginInstaller",
+      "explain": "安装插件",
+      "icon": "logo.png",
+      "cmds": [
+        {
+          "type": "files",
+          "label": "安装插件",
+          "fileType": "file",
+          "match": "/\\.tool-plugin$/i",
+          "maxLength": 1
+        }
+      ]
+    },
+    {
+      "code": "ui.router?router=Data",
+      "explain": "我的数据",
+      "icon": "logo.png",
+      "cmds": ["我的数据"]
+    },
+    {
+      "code": "ui.router?router=AllCommands",
+      "explain": "所有指令",
+      "icon": "logo.png",
+      "cmds": ["所有指令"]
+    },
+    {
+      "code": "ui.router?router=Sync",
+      "explain": "WebDAV 同步",
+      "icon": "logo.png",
+      "cmds": ["WebDAV 同步"]
+    },
+    {
+      "code": "ui.router?router=About",
       "explain": "关于 ZTools",
       "icon": "logo.png",
       "cmds": ["关于 ZTools"]
     },
     {
-      "code": "local-launch-add",
+      "code": "function.local-launch-add?router=LocalLaunch",
       "explain": "添加到本地启动",
       "icon": "logo.png",
       "cmds": [
@@ -114,7 +114,7 @@
       ]
     },
     {
-      "code": "exit",
+      "code": "function.exit",
       "explain": "退出 ZTools",
       "icon": "logo.png",
       "cmds": ["退出 ZTools"]
