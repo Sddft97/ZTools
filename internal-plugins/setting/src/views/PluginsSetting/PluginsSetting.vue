@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useToast, AdaptiveIcon } from '@/components'
 import { PluginDetail, NpmInstallPanel } from './components'
-import { weightedSearch } from '@/utils'
+import { compareVersions, upgradeInstalledPluginFromMarket, weightedSearch } from '@/utils'
 import { useJumpFunction, useZtoolsSubInput } from '@/composables'
 import { useRouter } from 'vue-router'
 
@@ -10,7 +10,7 @@ import { useRouter } from 'vue-router'
 //   (e: 'add-dev-consumed'): void
 // }>()
 
-const { success, error, confirm } = useToast()
+const { success, error, warning, info, confirm } = useToast()
 
 // 插件相关状态
 const plugins = ref<any[]>([])
@@ -24,6 +24,12 @@ const isKilling = ref(false)
 const isKillingAll = ref(false)
 const isReloading = ref(false)
 const isPackaging = ref(false)
+// 是否正在执行“全部更新”
+const isUpgradingAll = ref(false)
+// “全部更新”当前完成数（用于进度展示）
+const upgradeProgressDone = ref(0)
+// “全部更新”总任务数（用于进度展示）
+const upgradeProgressTotal = ref(0)
 
 // npm 安装相关状态
 const showNpmPanel = ref(false)
@@ -66,6 +72,14 @@ const runningPluginsCount = computed(() => {
   return runningFilteredPlugins.value.length
 })
 
+// 可升级插件（以已安装插件与插件市场版本比对）
+const upgradablePlugins = computed(() => {
+  return plugins.value.filter((p) => p.hasUpdate && p.marketPlugin)
+})
+
+// 可升级插件数量（用于菜单显示与批量更新）
+const upgradablePluginsCount = computed(() => upgradablePlugins.value.length)
+
 // 最终显示的插件列表（根据状态过滤，置顶的排在最前）
 const filteredPlugins = computed(() => {
   let list =
@@ -107,13 +121,38 @@ async function togglePin(plugin: any): Promise<void> {
 async function loadPlugins(): Promise<void> {
   isLoading.value = true
   try {
-    const result = await window.ztools.internal.getPlugins()
+    const [installedPlugins, marketResult] = await Promise.all([
+      window.ztools.internal.getPlugins(),
+      window.ztools.internal.fetchPluginMarket()
+    ])
+
+    const currentPlatform = window.ztools.internal.getPlatform()
+    // 以插件名为键缓存“当前平台可用”的市场插件，便于快速匹配本地已安装插件
+    const marketPluginMap = new Map<string, any>()
+    if (marketResult.success && Array.isArray(marketResult.data)) {
+      for (const marketPlugin of marketResult.data) {
+        if (!marketPlugin?.name) continue
+        if (
+          Array.isArray(marketPlugin.platform) &&
+          !marketPlugin.platform.includes(currentPlatform)
+        ) {
+          continue
+        }
+        marketPluginMap.set(marketPlugin.name, marketPlugin)
+      }
+    }
+
     // 插件中心的插件都是已安装的，标记 installed 为 true
-    plugins.value = result
+    plugins.value = installedPlugins
       .map((plugin: any) => ({
         ...plugin,
         installed: true,
-        localVersion: plugin.version
+        localVersion: plugin.version,
+        latestVersion: marketPluginMap.get(plugin.name)?.version,
+        marketPlugin: marketPluginMap.get(plugin.name),
+        hasUpdate:
+          !!marketPluginMap.get(plugin.name)?.version &&
+          compareVersions(plugin.version, marketPluginMap.get(plugin.name).version) < 0
       }))
       .sort((a: any, b: any) => {
         // 按安装时间降序排序（最新安装的在前面）
@@ -127,6 +166,85 @@ async function loadPlugins(): Promise<void> {
     console.error('加载插件列表失败:', error)
   } finally {
     isLoading.value = false
+  }
+}
+
+// 将单个已安装插件升级到市场最新版本（复用公共升级逻辑）
+async function upgradePluginToLatest(plugin: any): Promise<{ success: boolean; error?: string }> {
+  return upgradeInstalledPluginFromMarket(
+    { name: plugin.name, path: plugin.path },
+    plugin.marketPlugin
+  )
+}
+
+/**
+ * 批量升级可更新插件
+ * 逐个更新并实时反馈进度，完成后统一刷新列表与提示结果
+ */
+async function handleUpgradeAllPlugins(): Promise<void> {
+  const targets = upgradablePlugins.value
+  if (isUpgradingAll.value || targets.length === 0) return
+
+  const confirmed = await confirm({
+    title: '全部更新插件',
+    message: `检测到 ${targets.length} 个可更新插件，是否立即全部更新？`,
+    type: 'warning',
+    confirmText: '全部更新',
+    cancelText: '取消'
+  })
+  if (!confirmed) return
+
+  isUpgradingAll.value = true
+  upgradeProgressDone.value = 0
+  upgradeProgressTotal.value = targets.length
+  showMoreMenu.value = false
+
+  let successCount = 0
+  let failCount = 0
+  const failedNames: string[] = []
+
+  try {
+    console.log('开始批量更新插件:', {
+      total: targets.length,
+      names: targets.map((p) => p.name)
+    })
+    for (let i = 0; i < targets.length; i++) {
+      const plugin = targets[i]
+      const displayName = plugin.title || plugin.name
+      console.log(`批量更新进度 ${i + 1}/${targets.length}:`, displayName)
+      info(`正在更新 ${i + 1}/${targets.length}: ${displayName}`, 1400)
+
+      const result = await upgradePluginToLatest(plugin)
+      if (result.success) {
+        successCount++
+      } else {
+        failCount++
+        failedNames.push(displayName)
+        console.error(`[批量更新] 更新失败: ${displayName}`, result.error)
+      }
+      upgradeProgressDone.value = i + 1
+    }
+
+    await loadPlugins()
+
+    if (failCount === 0) {
+      console.log('批量更新完成，全部成功:', successCount)
+      success(`全部更新完成（共 ${successCount} 个）`)
+    } else if (successCount === 0) {
+      console.warn('批量更新完成，全部失败:', failCount)
+      error(`全部更新失败（共 ${failCount} 个）`)
+    } else {
+      console.warn('批量更新完成，部分失败:', { successCount, failCount })
+      warning(`部分更新失败：成功 ${successCount} 个，失败 ${failCount} 个`)
+      console.warn('[批量更新] 失败插件:', failedNames.join(', '))
+    }
+  } catch (err: any) {
+    console.error('批量更新插件失败:', err)
+    error(`批量更新失败: ${err.message || '未知错误'}`)
+  } finally {
+    isUpgradingAll.value = false
+    upgradeProgressDone.value = 0
+    upgradeProgressTotal.value = 0
   }
 }
 
@@ -643,6 +761,19 @@ async function handleInstallFromNpm(data: {
                     <line x1="12" y1="15" x2="12" y2="3"></line>
                   </svg>
                   {{ isImportingNpm ? '安装中...' : '从 npm 安装' }}
+                </button>
+                <button
+                  v-if="upgradablePluginsCount > 0"
+                  class="more-menu-item"
+                  :disabled="isUpgradingAll"
+                  @click="handleUpgradeAllPlugins"
+                >
+                  <div class="i-z-refresh font-size-16px" />
+                  {{
+                    isUpgradingAll
+                      ? `更新中... ${upgradeProgressDone}/${upgradeProgressTotal}`
+                      : `全部更新 (${upgradablePluginsCount})`
+                  }}
                 </button>
                 <button
                   class="more-menu-item kill-all-item"

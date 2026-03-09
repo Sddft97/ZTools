@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useToast, AdaptiveIcon } from '@/components'
-import { weightedSearch } from '@/utils'
+import { compareVersions, upgradeInstalledPluginFromMarket, weightedSearch } from '@/utils'
 import { PluginDetail } from './components'
 import { useHistoryState, useZtoolsSubInput } from '@/composables'
 import { onBeforeRouteUpdate } from 'vue-router'
@@ -115,22 +115,6 @@ async function handleOpenPlugin(plugin: Plugin): Promise<void> {
   }
 }
 
-// 版本比较函数：如果 v1 < v2 返回 -1，v1 > v2 返回 1，相等返回 0
-function compareVersions(v1: string, v2: string): number {
-  if (!v1 || !v2) return 0
-  const parts1 = v1.split('.').map(Number)
-  const parts2 = v2.split('.').map(Number)
-  const len = Math.max(parts1.length, parts2.length)
-
-  for (let i = 0; i < len; i++) {
-    const num1 = parts1[i] || 0
-    const num2 = parts2[i] || 0
-    if (num1 < num2) return -1
-    if (num1 > num2) return 1
-  }
-  return 0
-}
-
 function canUpgrade(plugin: Plugin): boolean {
   if (!plugin.installed || !plugin.localVersion || !plugin.version) return false
   return compareVersions(plugin.localVersion, plugin.version) < 0
@@ -154,42 +138,23 @@ async function handleUpgradePlugin(plugin: Plugin): Promise<void> {
 
   installingPlugin.value = plugin.name
   try {
-    // 0. 检查插件是否正在运行，如果是则先停止
-    console.log('检查插件运行状态:', plugin.name)
-    const runningPlugins = await window.ztools.internal.getRunningPlugins()
-    if (runningPlugins.includes(plugin.path)) {
-      console.log('插件正在运行，先停止插件:', plugin.name)
-      const killResult = await window.ztools.internal.killPlugin(plugin.path)
-      if (!killResult.success) {
-        console.warn('停止插件失败，继续升级:', killResult.error)
-      }
-    }
-
-    // 1. 卸载旧版本
-    console.log('开始卸载旧版本:', plugin.name)
-    const deleteResult = await window.ztools.internal.deletePlugin(plugin.path)
-    if (!deleteResult.success) {
-      throw new Error(`卸载失败: ${deleteResult.error}`)
-    }
-
-    // 2. 安装新版本
-    console.log('开始安装新版本:', plugin.name)
-    const installResult = await window.ztools.internal.installPluginFromMarket(
-      JSON.parse(JSON.stringify(plugin))
+    const upgradeResult = await upgradeInstalledPluginFromMarket(
+      { name: plugin.name, path: plugin.path },
+      plugin
     )
-    if (installResult.success) {
+    if (upgradeResult.success) {
       console.log('插件升级成功:', plugin.name)
       // 更新状态
       plugin.installed = true
       plugin.localVersion = plugin.version
       // 更新 path，这样可以立即打开插件
-      if (installResult.plugin && installResult.plugin.path) {
-        plugin.path = installResult.plugin.path
+      if (upgradeResult.plugin && upgradeResult.plugin.path) {
+        plugin.path = upgradeResult.plugin.path
       }
       // 重新获取列表以确保状态同步
       await fetchPlugins()
     } else {
-      throw new Error(`安装失败: ${installResult.error}`)
+      throw new Error(upgradeResult.error || '升级失败')
     }
   } catch (err: any) {
     console.error('升级出错:', err)
