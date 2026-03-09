@@ -378,13 +378,21 @@ export class ScreenCapture {
   /**
    * 启动区域截图
    * @param {Function} callback - 截图完成时的回调函数
-   * - 参数: { success: boolean, width?: number, height?: number }
+   * - 参数: { success: boolean, width?: number, height?: number, x?: number, y?: number }
    * - success: 是否成功截图
    * - width: 截图宽度（成功时）
    * - height: 截图高度（成功时）
+   * - x: 截图左上角 x 坐标（成功时，macOS 暂不支持）
+   * - y: 截图左上角 y 坐标（成功时，macOS 暂不支持）
    */
   static start(
-    callback: (result: { success: boolean; width?: number; height?: number }) => void
+    callback: (result: {
+      success: boolean
+      width?: number
+      height?: number
+      x?: number
+      y?: number
+    }) => void
   ): void {
     if (platform === 'darwin') {
       // macOS 暂不支持

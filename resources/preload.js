@@ -270,9 +270,9 @@ window.ztools = {
   showOpenDialog: (options) => electron.ipcRenderer.sendSync('show-open-dialog', options),
   // 屏幕截图
   screenCapture: async (callback) => {
-    const image = await electron.ipcRenderer.invoke('screen-capture')
+    const { image, bounds } = await electron.ipcRenderer.invoke('screen-capture')
     if (callback && typeof callback === 'function') {
-      callback(image)
+      callback(image, bounds)
     }
   },
   // 显示主窗口

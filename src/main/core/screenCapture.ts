@@ -6,11 +6,19 @@ import os from 'os'
 import { ScreenCapture } from './native'
 
 // 截图方法windows
-export const screenWindow = (cb: (image: string) => void): void => {
+export const screenWindow = (
+  cb: (image: string, bounds?: { x: number; y: number; width: number; height: number }) => void
+): void => {
   ScreenCapture.start((result) => {
     if (result.success) {
       const image = clipboard.readImage()
-      cb && cb(image.isEmpty() ? '' : image.toDataURL())
+      const bounds = {
+        x: result.x!,
+        y: result.y!,
+        width: result.width!,
+        height: result.height!
+      }
+      cb && cb(image.isEmpty() ? '' : image.toDataURL(), bounds)
     } else {
       cb && cb('')
     }
@@ -18,7 +26,9 @@ export const screenWindow = (cb: (image: string) => void): void => {
 }
 
 // 截图方法mac
-export const handleScreenShots = (cb: (image: string) => void): void => {
+export const handleScreenShots = (
+  cb: (image: string, bounds?: { x: number; y: number; width: number; height: number }) => void
+): void => {
   const tmpPath = path.join(os.tmpdir(), `screenshot_${Date.now()}.png`)
   exec(`screencapture -i -r "${tmpPath}"`, () => {
     if (fs.existsSync(tmpPath)) {
@@ -36,7 +46,9 @@ export const handleScreenShots = (cb: (image: string) => void): void => {
   })
 }
 
-export const screenCapture = (mainWindow?: BrowserWindow): Promise<string> => {
+export const screenCapture = (
+  mainWindow?: BrowserWindow
+): Promise<{ image: string; bounds?: { x: number; y: number; width: number; height: number } }> => {
   return new Promise((resolve) => {
     // 隐藏主窗口
     const wasVisible = mainWindow?.isVisible() || false
@@ -53,14 +65,14 @@ export const screenCapture = (mainWindow?: BrowserWindow): Promise<string> => {
 
     // 接收到截图后的执行程序
     if (process.platform === 'darwin') {
-      handleScreenShots((image) => {
+      handleScreenShots((image, bounds) => {
         restoreWindow()
-        resolve(image)
+        resolve({ image, bounds })
       })
     } else if (process.platform === 'win32') {
-      screenWindow((image) => {
+      screenWindow((image, bounds) => {
         restoreWindow()
-        resolve(image)
+        resolve({ image, bounds })
       })
     } else {
       new Notification({
@@ -68,7 +80,7 @@ export const screenCapture = (mainWindow?: BrowserWindow): Promise<string> => {
         body: 'Linux 系统截图暂不支持，我们将会尽快更新！'
       }).show()
       restoreWindow()
-      resolve('')
+      resolve({ image: '', bounds: undefined })
     }
   })
 }
