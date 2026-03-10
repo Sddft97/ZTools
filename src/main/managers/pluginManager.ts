@@ -690,14 +690,25 @@ export class PluginManager {
     }
   }
 
-  // 获取所有运行中的插件路径
+  // 获取所有运行中的插件路径（包括分离窗口中的插件）
   public getRunningPlugins(): string[] {
-    return this.pluginViews.map((v) => v.path)
+    const mainWindowPlugins = this.pluginViews.map((v) => v.path)
+    const detachedPlugins = detachedWindowManager.getAllWindows().map((w) => w.pluginPath)
+    return [...new Set([...mainWindowPlugins, ...detachedPlugins])]
   }
 
-  // 获取所有运行中的插件信息 (包含路径和名称)
+  // 获取所有运行中的插件信息（包括分离窗口中的插件）
   public getRunningPluginsInfo(): Array<{ path: string; name: string }> {
-    return this.pluginViews.map((v) => ({ path: v.path, name: v.name }))
+    const mainWindowPlugins = this.pluginViews.map((v) => ({ path: v.path, name: v.name }))
+    const detachedPlugins = detachedWindowManager
+      .getAllWindows()
+      .map((w) => ({ path: w.pluginPath, name: w.pluginName }))
+    const seen = new Set<string>()
+    return [...mainWindowPlugins, ...detachedPlugins].filter((p) => {
+      if (seen.has(p.path)) return false
+      seen.add(p.path)
+      return true
+    })
   }
 
   // 获取所有插件视图
@@ -711,49 +722,63 @@ export class PluginManager {
     return plugin ? plugin.name : null
   }
 
-  // 终止指定插件
+  // 终止指定插件（包括分离窗口中的插件）
   public killPlugin(pluginPath: string): boolean {
     try {
       console.log('[Plugin] killPlugin 开始:', { pluginPath })
       const index = this.pluginViews.findIndex((v) => v.path === pluginPath)
-      if (index === -1) {
-        console.log('[Plugin] 插件未运行:', pluginPath)
-        return false
+
+      if (index !== -1) {
+        // 插件在主窗口中运行
+        const { view } = this.pluginViews[index]
+
+        // 发送插件退出事件（isKill=true 表示进程结束）
+        if (!view.webContents.isDestroyed()) {
+          void this.assemblyCoordinator.dispatchLifecycleEvent(view, 'PluginOut', true)
+        }
+
+        // 如果是当前显示的插件，先隐藏
+        if (this.currentPluginPath === pluginPath && this.mainWindow) {
+          this.mainWindow.contentView.removeChildView(view)
+          this.pluginView = null
+          this.currentPluginPath = null
+          this.assemblyCoordinator.clearCurrentSession()
+        }
+
+        // 销毁 webContents
+        if (!view.webContents.isDestroyed()) {
+          view.webContents.close()
+        }
+        this.assemblyCoordinator.clearDomReady(view.webContents.id)
+
+        // 关闭该插件创建的所有窗口
+        pluginWindowManager.closeByPlugin(pluginPath)
+
+        // 从缓存中移除
+        this.pluginViews.splice(index, 1)
+
+        console.log('[Plugin] 插件已终止:', pluginPath)
+        console.log('[Plugin] killPlugin 完成:', {
+          pluginPath,
+          remainingPlugins: this.pluginViews.length
+        })
+        return true
       }
 
-      const { view } = this.pluginViews[index]
-
-      // 发送插件退出事件（isKill=true 表示进程结束）
-      if (!view.webContents.isDestroyed()) {
-        void this.assemblyCoordinator.dispatchLifecycleEvent(view, 'PluginOut', true)
+      // 插件可能在分离窗口中运行
+      const detachedWindows = detachedWindowManager.getAllWindows()
+      const isDetached = detachedWindows.some((w) => w.pluginPath === pluginPath)
+      if (isDetached) {
+        // 关闭该插件创建的所有独立窗口
+        pluginWindowManager.closeByPlugin(pluginPath)
+        // 关闭分离窗口（内部会销毁 webContents）
+        detachedWindowManager.closeByPlugin(pluginPath)
+        console.log('[Plugin] 分离窗口插件已终止:', pluginPath)
+        return true
       }
 
-      // 如果是当前显示的插件，先隐藏
-      if (this.currentPluginPath === pluginPath && this.mainWindow) {
-        this.mainWindow.contentView.removeChildView(view)
-        this.pluginView = null
-        this.currentPluginPath = null
-        this.assemblyCoordinator.clearCurrentSession()
-      }
-
-      // 销毁 webContents
-      if (!view.webContents.isDestroyed()) {
-        view.webContents.close()
-      }
-      this.assemblyCoordinator.clearDomReady(view.webContents.id)
-
-      // 关闭该插件创建的所有窗口
-      pluginWindowManager.closeByPlugin(pluginPath)
-
-      // 从缓存中移除
-      this.pluginViews.splice(index, 1)
-
-      console.log('[Plugin] 插件已终止:', pluginPath)
-      console.log('[Plugin] killPlugin 完成:', {
-        pluginPath,
-        remainingPlugins: this.pluginViews.length
-      })
-      return true
+      console.log('[Plugin] 插件未运行:', pluginPath)
+      return false
     } catch (error) {
       console.error('[Plugin] 终止插件失败:', error)
       return false
@@ -763,14 +788,21 @@ export class PluginManager {
   // 通过插件名称终止插件
   public killPluginByName(pluginName: string): boolean {
     const plugin = this.pluginViews.find((v) => v.name === pluginName)
-    if (!plugin) {
-      console.log('[Plugin] 未找到插件:', pluginName)
-      return false
+    if (plugin) {
+      return this.killPlugin(plugin.path)
     }
-    return this.killPlugin(plugin.path)
+    // 查找分离窗口中的插件
+    const detachedWindow = detachedWindowManager
+      .getAllWindows()
+      .find((w) => w.pluginName === pluginName)
+    if (detachedWindow) {
+      return this.killPlugin(detachedWindow.pluginPath)
+    }
+    console.log('[Plugin] 未找到插件:', pluginName)
+    return false
   }
 
-  // 终止所有插件
+  // 终止所有插件（包括分离窗口中的插件）
   public killAllPlugins(): void {
     console.log('[Plugin] killAllPlugins 开始:', { total: this.pluginViews.length })
     for (const { view, path } of this.pluginViews) {
@@ -799,6 +831,10 @@ export class PluginManager {
     this.pluginView = null
     this.currentPluginPath = null
     this.assemblyCoordinator.clearCurrentSession()
+
+    // 关闭所有分离窗口中的插件
+    detachedWindowManager.closeAll()
+
     console.log('[Plugin] killAllPlugins 完成')
   }
 
