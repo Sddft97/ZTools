@@ -472,6 +472,18 @@ class DetachedWindowManager {
   }
 
   /**
+   * 获取指定插件的分离窗口中的 WebContentsView（单例重入使用）
+   */
+  public getViewByPlugin(pluginPath: string): WebContentsView | null {
+    for (const windowInfo of this.detachedWindowMap.values()) {
+      if (windowInfo.pluginPath === pluginPath && !windowInfo.window.isDestroyed()) {
+        return windowInfo.view
+      }
+    }
+    return null
+  }
+
+  /**
    * 关闭指定插件的所有分离窗口
    */
   public closeByPlugin(pluginPath: string): void {
