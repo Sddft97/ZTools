@@ -121,51 +121,74 @@ async function togglePin(plugin: any): Promise<void> {
 async function loadPlugins(): Promise<void> {
   isLoading.value = true
   try {
-    const [installedPlugins, marketResult] = await Promise.all([
-      window.ztools.internal.getPlugins(),
-      window.ztools.internal.fetchPluginMarket()
-    ])
+    const installedPlugins = await window.ztools.internal.getPlugins()
+    plugins.value = buildPluginList(installedPlugins)
+    await loadRunningPlugins()
+  } catch (err) {
+    console.error('加载插件列表失败:', err)
+  } finally {
+    isLoading.value = false
+  }
 
-    const currentPlatform = window.ztools.internal.getPlatform()
-    // 以插件名为键缓存“当前平台可用”的市场插件，便于快速匹配本地已安装插件
-    const marketPluginMap = new Map<string, any>()
-    if (marketResult.success && Array.isArray(marketResult.data)) {
-      for (const marketPlugin of marketResult.data) {
-        if (!marketPlugin?.name) continue
-        if (
-          Array.isArray(marketPlugin.platform) &&
-          !marketPlugin.platform.includes(currentPlatform)
-        ) {
-          continue
-        }
-        marketPluginMap.set(marketPlugin.name, marketPlugin)
-      }
-    }
+  // 异步获取市场数据，补充更新信息（不阻塞列表展示）
+  void checkMarketUpdates()
+}
 
-    // 插件中心的插件都是已安装的，标记 installed 为 true
-    plugins.value = installedPlugins
-      .map((plugin: any) => ({
+// 将已安装插件列表按安装时间排序并设置初始字段
+function buildPluginList(installedPlugins: any[], marketPluginMap?: Map<string, any>): any[] {
+  return installedPlugins
+    .map((plugin: any) => {
+      const market = marketPluginMap?.get(plugin.name)
+      return {
         ...plugin,
         installed: true,
         localVersion: plugin.version,
-        latestVersion: marketPluginMap.get(plugin.name)?.version,
-        marketPlugin: marketPluginMap.get(plugin.name),
-        hasUpdate:
-          !!marketPluginMap.get(plugin.name)?.version &&
-          compareVersions(plugin.version, marketPluginMap.get(plugin.name).version) < 0
-      }))
-      .sort((a: any, b: any) => {
-        // 按安装时间降序排序（最新安装的在前面）
-        const timeA = a.installedAt ? new Date(a.installedAt).getTime() : 0
-        const timeB = b.installedAt ? new Date(b.installedAt).getTime() : 0
-        return timeB - timeA
-      })
-    // 同时加载运行中的插件
-    await loadRunningPlugins()
-  } catch (error) {
-    console.error('加载插件列表失败:', error)
-  } finally {
-    isLoading.value = false
+        latestVersion: market?.version,
+        marketPlugin: market,
+        hasUpdate: !!market?.version && compareVersions(plugin.version, market.version) < 0
+      }
+    })
+    .sort((a: any, b: any) => {
+      const timeA = a.installedAt ? new Date(a.installedAt).getTime() : 0
+      const timeB = b.installedAt ? new Date(b.installedAt).getTime() : 0
+      return timeB - timeA
+    })
+}
+
+// 市场更新检查序列号，防止并发请求导致过时数据覆盖
+let marketCheckSeq = 0
+
+// 异步检查市场更新，补充 hasUpdate / marketPlugin 等字段
+async function checkMarketUpdates(): Promise<void> {
+  const seq = ++marketCheckSeq
+  try {
+    const marketResult = await window.ztools.internal.fetchPluginMarket()
+    if (seq !== marketCheckSeq) return // 已被新调用取代，丢弃结果
+    if (!marketResult.success || !Array.isArray(marketResult.data)) return
+
+    const currentPlatform = window.ztools.internal.getPlatform()
+    const marketPluginMap = new Map<string, any>()
+    for (const marketPlugin of marketResult.data) {
+      if (!marketPlugin?.name) continue
+      if (
+        Array.isArray(marketPlugin.platform) &&
+        !marketPlugin.platform.includes(currentPlatform)
+      ) {
+        continue
+      }
+      marketPluginMap.set(marketPlugin.name, marketPlugin)
+    }
+
+    // 用市场信息重新构建列表（剥离旧的市场字段后重新赋值）
+    plugins.value = buildPluginList(
+      plugins.value.map((p: any) => {
+        const { latestVersion: _lv, marketPlugin: _mp, hasUpdate: _hu, ...rest } = p
+        return rest
+      }),
+      marketPluginMap
+    )
+  } catch (err) {
+    console.error('检查市场更新失败:', err)
   }
 }
 
