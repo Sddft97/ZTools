@@ -363,6 +363,7 @@ declare global {
       onSuperPanelLaunch: (
         callback: (data: { command: any; clipboardContent?: any; windowInfo?: any }) => void
       ) => void
+      superPanelAddBlockedApp: () => Promise<{ success: boolean; app?: string; error?: string }>
       // 超级面板窗口匹配
       superPanelSearchWindowCommands: (windowInfo: {
         app?: string

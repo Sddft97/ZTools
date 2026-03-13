@@ -2,6 +2,7 @@ import { app, IpcMainInvokeEvent, ipcMain } from 'electron'
 import type { PluginManager } from '../../managers/pluginManager'
 import windowManager from '../../managers/windowManager.js'
 import logCollector from '../../core/logCollector.js'
+import clipboardManager from '../../managers/clipboardManager.js'
 import detachedWindowManager from '../../core/detachedWindowManager.js'
 import floatingBallManager from '../../core/floatingBallManager.js'
 import httpServer from '../../core/httpServer.js'
@@ -708,6 +709,24 @@ export class InternalPluginAPI {
         return { success: true }
       }
     )
+
+    ipcMain.handle(
+      'internal:update-super-panel-blocked-apps',
+      async (event, blockedApps: Array<{ app: string; bundleId?: string; label?: string }>) => {
+        if (!requireInternalPlugin(this.pluginManager, event)) {
+          throw new PermissionDeniedError('internal:update-super-panel-blocked-apps')
+        }
+        superPanelManager.updateBlockedApps(blockedApps)
+        return { success: true }
+      }
+    )
+
+    ipcMain.handle('internal:get-current-window-info', async (event) => {
+      if (!requireInternalPlugin(this.pluginManager, event)) {
+        throw new PermissionDeniedError('internal:get-current-window-info')
+      }
+      return clipboardManager.getCurrentWindow()
+    })
 
     // ==================== 图片分析 API ====================
     // 直接转发到共享的 analyze-image handler（已在 imageAnalysis.ts 中注册）

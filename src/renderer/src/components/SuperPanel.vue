@@ -188,6 +188,30 @@
       <span class="loading-text">加载中...</span>
     </div>
 
+    <!-- 底部工具栏 -->
+    <div v-if="mode !== 'loading'" class="panel-footer">
+      <div class="footer-spacer" />
+      <div
+        class="header-menu-btn"
+        :class="{ 'btn-disabled': !currentWindowInfo }"
+        :title="currentWindowInfo ? `屏蔽 ${currentWindowInfo.app} 弹出面板` : '屏蔽面板弹出'"
+        @click="addBlockedApp"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3" fill="none" />
+          <line
+            x1="3.4"
+            y1="12.6"
+            x2="12.6"
+            y2="3.4"
+            stroke="currentColor"
+            stroke-width="1.3"
+            stroke-linecap="round"
+          />
+        </svg>
+      </div>
+    </div>
+
     <!-- 文件夹弹窗 - 覆盖式 -->
     <Transition name="slide-up">
       <div v-if="showFolderPopup && currentFolder" class="folder-popup-overlay">
@@ -695,6 +719,12 @@ function showPinned(): void {
 // 点击头像：隐藏超级面板，显示主搜索窗口
 function showMainWindow(): void {
   window.ztools.superPanelShowMainWindow()
+}
+
+// 添加当前窗口到屏蔽列表
+async function addBlockedApp(): Promise<void> {
+  if (!currentWindowInfo.value) return
+  await window.ztools.superPanelAddBlockedApp()
 }
 
 // 打开窗口匹配面板
@@ -1364,6 +1394,24 @@ onUnmounted(() => {
 /* ========== 标题栏间距 ========== */
 .header-spacer {
   flex: 1;
+}
+
+/* ========== 底部工具栏 ========== */
+.panel-footer {
+  display: flex;
+  align-items: center;
+  padding: 6px 16px;
+  border-top: 1px solid var(--divider-color);
+  flex-shrink: 0;
+}
+
+.footer-spacer {
+  flex: 1;
+}
+
+.btn-disabled {
+  opacity: 0.3;
+  pointer-events: none;
 }
 
 /* ========== 窗口匹配底部滑出面板 ========== */

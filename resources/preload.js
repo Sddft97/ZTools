@@ -805,6 +805,10 @@ window.ztools = {
     // ==================== 超级面板 API ====================
     updateSuperPanelConfig: async (config) =>
       await electron.ipcRenderer.invoke('internal:update-super-panel-config', config),
+    updateSuperPanelBlockedApps: async (blockedApps) =>
+      await electron.ipcRenderer.invoke('internal:update-super-panel-blocked-apps', blockedApps),
+    getCurrentWindowInfo: async () =>
+      await electron.ipcRenderer.invoke('internal:get-current-window-info'),
     pinToSuperPanel: async (command) =>
       await electron.ipcRenderer.invoke('super-panel:pin-command', command),
     unpinSuperPanelCommand: async (path, featureCode) =>

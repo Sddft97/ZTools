@@ -36,7 +36,7 @@ interface NativeAddon {
   startMouseMonitor: (
     buttonType: MouseButtonType,
     longPressMs: number,
-    callback: () => void
+    callback: () => void | { shouldBlock?: boolean }
   ) => void
   stopMouseMonitor: () => void
   getUwpApps: () => UwpAppInfo[]
@@ -375,8 +375,10 @@ export class WindowManager {
 /**
  * 鼠标监控类
  */
+export type MouseMonitorResult = { shouldBlock?: boolean } | void
+
 export class MouseMonitor {
-  private static _callback: (() => void) | null = null
+  private static _callback: (() => MouseMonitorResult) | null = null
   private static _isMonitoring = false
 
   /**
@@ -387,9 +389,14 @@ export class MouseMonitor {
    *   - >0: 监听长按（按住达到该时长后触发）
    *   - 注意：'right' 只支持长按（longPressMs 必须 > 0）
    * @param callback - 鼠标事件回调函数
-   * - 参数: 无
+   * - 返回值: 无返回值或 { shouldBlock?: boolean }
+   *   - shouldBlock: true 时 C++ 侧拦截原始鼠标事件，不传递给目标窗口
    */
-  static start(buttonType: MouseButtonType, longPressMs: number, callback: () => void): void {
+  static start(
+    buttonType: MouseButtonType,
+    longPressMs: number,
+    callback: () => MouseMonitorResult
+  ): void {
     if (MouseMonitor._isMonitoring) {
       throw new Error('Mouse monitor is already running')
     }
@@ -415,7 +422,7 @@ export class MouseMonitor {
     MouseMonitor._isMonitoring = true
     ;(addon as NativeAddon).startMouseMonitor(buttonType, longPressMs, () => {
       if (MouseMonitor._callback) {
-        MouseMonitor._callback()
+        return MouseMonitor._callback()
       }
     })
   }

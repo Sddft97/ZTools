@@ -369,6 +369,7 @@ const api = {
   ) => {
     ipcRenderer.on('super-panel-launch', (_event, data) => callback(data))
   },
+  superPanelAddBlockedApp: () => ipcRenderer.invoke('super-panel:add-blocked-app'),
   // 超级面板窗口匹配
   superPanelSearchWindowCommands: (windowInfo: { app?: string; title?: string }) =>
     ipcRenderer.invoke('super-panel:search-window-commands', windowInfo),

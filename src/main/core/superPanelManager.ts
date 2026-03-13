@@ -4,7 +4,12 @@ import os from 'os'
 import path from 'path'
 import plist from 'simple-plist'
 import { is } from '@electron-toolkit/utils'
-import { ClipboardMonitor, MouseMonitor, WindowManager } from './native/index.js'
+import {
+  ClipboardMonitor,
+  MouseMonitor,
+  WindowManager,
+  type MouseMonitorResult
+} from './native/index.js'
 import { launchApp } from './commandLauncher/index.js'
 import databaseAPI from '../api/shared/database.js'
 import windowManager from '../managers/windowManager.js'
@@ -26,10 +31,17 @@ interface ClipboardContent {
   files?: Array<{ path: string; name: string; isDirectory: boolean }>
 }
 
+interface BlockedApp {
+  app: string
+  bundleId?: string
+  label?: string
+}
+
 interface SuperPanelConfig {
   enabled: boolean
   mouseButton: 'middle' | 'right' | 'back' | 'forward'
   longPressMs: number
+  blockedApps: BlockedApp[]
 }
 
 /**
@@ -44,7 +56,8 @@ class SuperPanelManager {
   private config: SuperPanelConfig = {
     enabled: false,
     mouseButton: 'middle',
-    longPressMs: 500
+    longPressMs: 500,
+    blockedApps: []
   }
 
   /**
@@ -66,7 +79,8 @@ class SuperPanelManager {
         this.config = {
           enabled: data.superPanelEnabled ?? false,
           mouseButton: data.superPanelMouseButton ?? 'middle',
-          longPressMs: data.superPanelLongPressMs ?? 500
+          longPressMs: data.superPanelLongPressMs ?? 500,
+          blockedApps: data.superPanelBlockedApps ?? []
         }
         if (this.config.enabled) {
           this.startMonitor()
@@ -85,7 +99,8 @@ class SuperPanelManager {
     this.config = {
       enabled: config.enabled,
       mouseButton: config.mouseButton as SuperPanelConfig['mouseButton'],
-      longPressMs: config.longPressMs
+      longPressMs: config.longPressMs,
+      blockedApps: this.config.blockedApps
     }
 
     if (this.config.enabled) {
@@ -99,6 +114,40 @@ class SuperPanelManager {
   }
 
   /**
+   * 单独更新屏蔽列表
+   */
+  updateBlockedApps(blockedApps: BlockedApp[]): void {
+    this.config.blockedApps = blockedApps
+    console.log('[SuperPanel] 超级面板屏蔽列表已更新:', blockedApps.length, '项')
+  }
+
+  /**
+   * 判断当前窗口是否被屏蔽
+   */
+  private isWindowBlocked(windowInfo: { app: string; bundleId?: string }): boolean {
+    if (!this.config.blockedApps || this.config.blockedApps.length === 0) {
+      return false
+    }
+
+    const appName = windowInfo.app.toLowerCase()
+
+    for (const blocked of this.config.blockedApps) {
+      // macOS 优先匹配 bundleId
+      if (blocked.bundleId && windowInfo.bundleId) {
+        if (blocked.bundleId.toLowerCase() === windowInfo.bundleId.toLowerCase()) {
+          return true
+        }
+      }
+      // 进程名大小写不敏感匹配
+      if (blocked.app.toLowerCase() === appName) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  /**
    * 启动鼠标监听
    */
   private startMonitor(): void {
@@ -109,7 +158,7 @@ class SuperPanelManager {
 
     try {
       MouseMonitor.start(this.config.mouseButton, this.config.longPressMs, () => {
-        this.onMouseTrigger()
+        return this.onMouseTrigger()
       })
       console.log(
         `[SuperPanel] 超级面板鼠标监听已启动: ${this.config.mouseButton}, ${this.config.longPressMs}ms`
@@ -212,15 +261,37 @@ class SuperPanelManager {
   /**
    * 鼠标触发回调
    */
-  private async onMouseTrigger(): Promise<void> {
+  private onMouseTrigger(): MouseMonitorResult {
     try {
       // 1. 记录鼠标位置
       const cursorPoint = screen.getCursorScreenPoint()
 
       // 1.5. 记录触发前的窗口信息
-      const windowInfo = clipboardManager.getCurrentWindow()
+      // 优先使用 getActiveWindow() 实时获取前台窗口（更准确），回退到缓存的窗口信息
+      const cachedWindow = clipboardManager.getCurrentWindow()
+      const activeWindow = WindowManager.getActiveWindow()
+      const windowInfo = activeWindow ? { ...cachedWindow, ...activeWindow } : cachedWindow
       this.currentWindowInfo = windowInfo ?? null
 
+      // 1.6. 检查当前窗口是否被屏蔽
+      const windowToCheck = activeWindow || cachedWindow
+      if (windowToCheck && this.isWindowBlocked(windowToCheck)) {
+        console.log('[SuperPanel] 当前窗口被屏蔽，跳过触发:', windowToCheck.app)
+        return { shouldBlock: false }
+      }
+
+      // 异步部分：模拟复制、读取剪贴板、显示面板
+      this.onMouseTriggerAsync(cursorPoint)
+
+      return { shouldBlock: true }
+    } catch (error) {
+      console.error('[SuperPanel] 超级面板触发失败:', error)
+      return { shouldBlock: false }
+    }
+  }
+
+  private async onMouseTriggerAsync(cursorPoint: { x: number; y: number }): Promise<void> {
+    try {
       // 2. 记录当前剪贴板内容快照（用于对比是否有新内容）
       const oldContent = this.readClipboardContent()
       const oldClipboardText = clipboard.readText()
@@ -719,6 +790,56 @@ class SuperPanelManager {
         return flattened
       } catch {
         return []
+      }
+    })
+
+    // 超级面板添加当前窗口到屏蔽列表
+    ipcMain.handle('super-panel:add-blocked-app', async () => {
+      try {
+        if (!this.currentWindowInfo?.app) {
+          return { success: false, error: '无法获取当前窗口信息' }
+        }
+
+        const appName = this.currentWindowInfo.app
+
+        // 去重检查（app 名称忽略大小写）
+        const alreadyBlocked = this.config.blockedApps.some(
+          (b) => b.app.toLowerCase() === appName.toLowerCase()
+        )
+        if (alreadyBlocked) {
+          this.hideWindow()
+          return { success: true, app: appName.replace(/\.(exe|app)$/i, '') }
+        }
+
+        // 生成 label（去掉 .exe / .app 后缀）
+        const label = appName.replace(/\.(exe|app)$/i, '')
+
+        // 构造 BlockedApp 对象
+        const blockedApp: BlockedApp = {
+          app: appName,
+          bundleId: this.currentWindowInfo.bundleId,
+          label
+        }
+
+        // 添加到内存中的屏蔽列表
+        this.config.blockedApps.push(blockedApp)
+
+        // 持久化到数据库
+        const data = databaseAPI.dbGet('settings-general') || {}
+        data.superPanelBlockedApps = this.config.blockedApps
+        databaseAPI.dbPut('settings-general', data)
+
+        // 隐藏超级面板窗口
+        this.hideWindow()
+
+        console.log('[SuperPanel] 已将应用添加到屏蔽列表:', label)
+        return { success: true, app: label }
+      } catch (error) {
+        console.error('[SuperPanel] 添加屏蔽应用失败:', error)
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : '未知错误'
+        }
       }
     })
 

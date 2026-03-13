@@ -142,6 +142,7 @@ const floatingBallDoubleClickCommand = ref('')
 const superPanelEnabled = ref(false)
 const superPanelMouseButton = ref<MouseButtonType>('middle')
 const superPanelLongPressMs = ref(500)
+const superPanelBlockedApps = ref<Array<{ app: string; bundleId?: string; label?: string }>>([])
 
 // 超级面板触发模式（计算属性）
 const superPanelTriggerMode = computed({
@@ -647,6 +648,63 @@ async function handleSuperPanelLongPressMsChange(): Promise<void> {
   }
 }
 
+// 添加屏蔽应用（获取当前窗口）
+async function handleAddBlockedApp(): Promise<void> {
+  try {
+    console.log('[Setting] handleAddBlockedApp 开始')
+    const windowInfo = await window.ztools.internal.getCurrentWindowInfo()
+    console.log('[Setting] getCurrentWindowInfo 返回:', JSON.stringify(windowInfo))
+    if (!windowInfo) {
+      error('无法获取当前窗口信息')
+      return
+    }
+
+    // 去重检查
+    const exists = superPanelBlockedApps.value.some(
+      (item) => item.app.toLowerCase() === windowInfo.app.toLowerCase()
+    )
+    if (exists) {
+      info('该应用已在屏蔽列表中')
+      return
+    }
+
+    // 生成显示名称：去掉 .exe / .app 后缀
+    const label = windowInfo.app.replace(/\.(exe|app)$/i, '')
+
+    superPanelBlockedApps.value.push({
+      app: windowInfo.app,
+      bundleId: windowInfo.bundleId,
+      label
+    })
+
+    console.log(
+      '[Setting] saveSettings 前, blockedApps:',
+      JSON.stringify(superPanelBlockedApps.value)
+    )
+    await saveSettings()
+    console.log('[Setting] saveSettings 完成, 开始调用 updateSuperPanelBlockedApps')
+    await window.ztools.internal.updateSuperPanelBlockedApps(
+      superPanelBlockedApps.value.map((item) => ({ ...item }))
+    )
+    console.log('[Setting] updateSuperPanelBlockedApps 完成')
+  } catch (err) {
+    console.error('添加屏蔽应用失败:', err)
+  }
+}
+
+// 移除屏蔽应用
+async function handleRemoveBlockedApp(index: number): Promise<void> {
+  try {
+    superPanelBlockedApps.value.splice(index, 1)
+    await saveSettings()
+    await window.ztools.internal.updateSuperPanelBlockedApps(
+      superPanelBlockedApps.value.map((item) => ({ ...item }))
+    )
+  } catch (err) {
+    console.error('移除屏蔽应用失败:', err)
+  }
+}
+
 // 处理主题色变化
 async function handlePrimaryColorChange(color: string): Promise<void> {
   try {
@@ -937,6 +995,7 @@ async function loadSettings(): Promise<void> {
       superPanelEnabled.value = data.superPanelEnabled ?? false
       superPanelMouseButton.value = data.superPanelMouseButton ?? 'middle'
       superPanelLongPressMs.value = data.superPanelLongPressMs ?? 500
+      superPanelBlockedApps.value = data.superPanelBlockedApps ?? []
       // 窗口材质由主进程启动时保证一定有值，无需兜底
       windowMaterial.value = data.windowMaterial
       acrylicLightOpacity.value = data.acrylicLightOpacity ?? 78
@@ -1007,6 +1066,7 @@ async function saveSettings(): Promise<void> {
       superPanelEnabled: superPanelEnabled.value,
       superPanelMouseButton: superPanelMouseButton.value,
       superPanelLongPressMs: superPanelLongPressMs.value,
+      superPanelBlockedApps: superPanelBlockedApps.value.map((item) => ({ ...item })),
       theme: theme.value,
       primaryColor: primaryColor.value,
       customColor: customColor.value,
@@ -1608,6 +1668,35 @@ onMounted(() => {
           />
         </div>
       </div>
+
+      <div v-if="superPanelEnabled" class="setting-item blocked-apps-setting">
+        <div class="blocked-apps-content">
+          <div class="blocked-apps-header">
+            <div class="setting-label">
+              <span>屏蔽弹出</span>
+              <span class="setting-desc">在指定应用窗口中不触发超级面板</span>
+            </div>
+            <div class="setting-control">
+              <button class="btn btn-sm" @click="handleAddBlockedApp">添加当前窗口</button>
+            </div>
+          </div>
+          <div
+            v-if="superPanelEnabled && superPanelBlockedApps.length > 0"
+            class="blocked-apps-tags"
+          >
+            <span
+              v-for="(app, index) in superPanelBlockedApps"
+              :key="app.app"
+              class="blocked-app-tag"
+            >
+              {{ app.label || app.app }}
+              <button class="blocked-app-remove" @click="handleRemoveBlockedApp(index)">
+                &times;
+              </button>
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ==================== 悬浮球 ==================== -->
@@ -1877,6 +1966,7 @@ onMounted(() => {
 .combined-control {
   gap: 16px;
 }
+
 .color-control {
   display: flex;
   gap: 12px;
@@ -1975,5 +2065,69 @@ onMounted(() => {
   background: var(--primary-light-bg);
   border-color: var(--primary-color);
   font-weight: 500;
+}
+
+.blocked-apps-content {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.blocked-apps-header {
+  display: flex;
+  justify-content: space-between;
+}
+
+.blocked-apps-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+  background-color: var(--control-bg);
+  border-radius: 4px;
+  border: 2px solid var(--control-border);
+}
+
+.blocked-app-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: var(--control-bg);
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  color: var(--text-color);
+  transition: border-color 0.2s;
+}
+
+.blocked-app-tag:hover {
+  border-color: var(--danger-color);
+}
+
+.blocked-app-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+
+.blocked-app-remove:hover {
+  color: var(--danger-color);
+  background: var(--danger-light-bg);
 }
 </style>

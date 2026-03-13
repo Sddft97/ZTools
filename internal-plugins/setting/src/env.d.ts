@@ -355,6 +355,16 @@ declare global {
           mouseButton: string
           longPressMs: number
         }) => Promise<{ success: boolean }>
+        updateSuperPanelBlockedApps: (
+          blockedApps: Array<{ app: string; bundleId?: string; label?: string }>
+        ) => Promise<{ success: boolean }>
+        getCurrentWindowInfo: () => Promise<{
+          app: string
+          bundleId?: string
+          pid?: number
+          title?: string
+          appPath?: string
+        } | null>
         pinToSuperPanel: (command: any) => Promise<{ success: boolean; error?: string }>
         unpinSuperPanelCommand: (
           path: string,
