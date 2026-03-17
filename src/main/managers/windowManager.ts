@@ -58,6 +58,7 @@ class WindowManager {
   private lastFocusTarget: 'mainWindow' | 'plugin' | null = null // 窗口隐藏前的焦点状态
   private isRestoringFocus: boolean = false // 是否正在恢复焦点状态（防止 focus 事件监听器干扰）
   private suppressBlurHide: boolean = false // 临时抑制 blur 事件隐藏窗口（文件关联打开等场景）
+  private lastBlurHideTime: number = 0 // blur 导致隐藏窗口的时间戳（用于解决托盘点击竞态）
   private appShortcuts: Map<string, string> = new Map() // 应用快捷键映射表 (快捷键 -> 目标指令)
 
   /**
@@ -218,6 +219,7 @@ class WindowManager {
 
     this.mainWindow.on('blur', () => {
       if (this.suppressBlurHide) return
+      this.lastBlurHideTime = Date.now()
       this.hideWindow(false)
     })
 
@@ -479,6 +481,12 @@ class WindowManager {
       this.restorePreviousWindow()
     } else {
       // 窗口已隐藏或失焦 → 显示并强制激活
+      // 但如果是刚刚因为 blur 事件隐藏的（点击托盘图标导致失焦），
+      // 说明用户意图是隐藏窗口，不应再重新显示
+      const timeSinceBlurHide = Date.now() - this.lastBlurHideTime
+      if (timeSinceBlurHide < 300) {
+        return
+      }
       this.showWindow()
     }
   }
