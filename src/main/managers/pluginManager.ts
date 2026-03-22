@@ -423,6 +423,11 @@ export class PluginManager {
     this.pluginView = cached.view
     this.mainWindow.contentView.addChildView(this.pluginView)
 
+    // 强制重绘：部分 Windows 系统 GPU 驱动下，重新挂载 WebContentsView 后合成层不会自动刷新导致白屏
+    if (!this.pluginView.webContents.isDestroyed()) {
+      this.pluginView.webContents.invalidate()
+    }
+
     // 恢复显示时关闭节流
     this.applyBackgroundThrottlingByPolicy(this.pluginView, pluginPath, false)
 
