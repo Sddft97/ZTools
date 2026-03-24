@@ -777,6 +777,37 @@ export class PluginManager {
     return this.pluginView
   }
 
+  /**
+   * 在主窗口显示时按需恢复当前插件视图高度。
+   * mainHide feature 在启动阶段会先把高度压成 0，后续若通过 showWindow 唤起主窗口，
+   * 需要把插件视图恢复到缓存高度或默认高度。
+   */
+  public restoreCurrentPluginViewHeightOnWindowShow(): void {
+    if (!this.mainWindow || !this.pluginView || !this.currentPluginPath) {
+      return
+    }
+
+    const lastState = this.pluginLastEnterState.get(this.currentPluginPath)
+    if (!lastState) return
+
+    if (!this.isFeatureMainHide(this.currentPluginPath, lastState.featureCode)) {
+      return
+    }
+
+    const bounds = this.pluginView.getBounds()
+    if (bounds.height > 0) {
+      return
+    }
+
+    const cached = this.pluginViews.find((v) => v.path === this.currentPluginPath)
+    const targetHeight =
+      cached?.height && cached.height > 0 ? cached.height : this.pluginDefaultHeight
+
+    console.log('[Plugin] showWindow 时恢复 mainHide 插件高度:', targetHeight)
+    this.setExpendHeight(targetHeight, true)
+    this.forceRepaintView(this.pluginView)
+  }
+
   public focusPluginView(): void {
     if (this.pluginView && this.pluginView.webContents) {
       console.log('[Plugin] 插件视图获取焦点')

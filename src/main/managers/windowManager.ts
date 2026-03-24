@@ -575,6 +575,9 @@ class WindowManager {
     // 移动到鼠标所在显示器（恢复该显示器记忆的位置或居中）
     this.moveWindowToCursor()
 
+    // mainHide feature 启动时可能把插件视图高度压成 0，窗口重新显示时按需恢复
+    pluginManager.restoreCurrentPluginViewHeightOnWindowShow()
+
     // 使用强制激活逻辑（注意：show 事件会清除 isRestoringFocus 标志）
     this.forceActivateWindow()
   }

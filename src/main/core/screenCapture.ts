@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { ScreenCapture } from './native'
+import windowManager from '../managers/windowManager'
 
 // 截图方法windows
 export const screenWindow = (
@@ -59,7 +60,7 @@ export const screenCapture = (
     // 恢复窗口显示
     const restoreWindow = (): void => {
       if (mainWindow && wasVisible) {
-        mainWindow.show()
+        windowManager.showWindow()
       }
     }
 
