@@ -33,6 +33,12 @@ const baseBuiltInShortcuts = [
     enabled: true
   },
   {
+    id: 'builtin-tab-target',
+    shortcut: 'Tab',
+    target: '在搜索框输入文字后，按 Tab 进入 Tab 键目标指令',
+    enabled: true
+  },
+  {
     id: 'builtin-settings',
     shortcut: 'MOD+,',
     target: '打开设置',
