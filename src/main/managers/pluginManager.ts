@@ -14,6 +14,7 @@ import { getInternalPluginUrl, getInternalPluginServerPort } from '../core/inter
 import pluginWindowManager from '../core/pluginWindowManager'
 import { registerIconProtocolForSession } from '../core/iconProtocol'
 import lmdbInstance from '../core/lmdb/lmdbInstance'
+import databaseAPI from '../api/shared/database'
 import proxyManager from './proxyManager'
 import {
   EnterPayload,
@@ -700,6 +701,12 @@ export class PluginManager {
         (input.key === 'q' || input.key === 'Q') &&
         (input.meta || input.control)
       ) {
+        const settings = databaseAPI.dbGet('settings-general') || {}
+        const isEnabled = settings?.builtinAppShortcutsEnabled?.killPlugin !== false
+        if (!isEnabled) {
+          // 禁用时不拦截，让按键正常传到渲染进程（供 HotkeyInput 录制）
+          return
+        }
         event.preventDefault()
         console.log('[Plugin] 插件视图检测到 Cmd+Q 快捷键，终止插件')
         this.killCurrentPlugin()

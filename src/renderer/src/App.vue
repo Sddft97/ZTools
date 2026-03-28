@@ -367,6 +367,11 @@ async function handleKeydown(event: KeyboardEvent): Promise<void> {
 
   // Cmd/Ctrl + Q: 在插件内终止插件
   if ((event.key === 'q' || event.key === 'Q') && (event.metaKey || event.ctrlKey)) {
+    const settings = (await window.ztools.dbGet('settings-general')) || {}
+    const isEnabled = settings?.builtinAppShortcutsEnabled?.killPlugin !== false
+    if (!isEnabled) {
+      return
+    }
     console.log('检测到 Cmd+Q/Ctrl+Q 快捷键，当前视图:', currentView.value)
     event.preventDefault()
     if (currentView.value === ViewMode.Plugin && windowStore.currentPlugin) {

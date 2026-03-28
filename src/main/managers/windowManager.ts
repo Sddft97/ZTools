@@ -177,6 +177,20 @@ class WindowManager {
 
       // 检查应用快捷键（仅在按键按下时触发，且未打开插件时生效）
       if (input.type === 'keyDown') {
+        if (
+          (input.key === 'w' || input.key === 'W') &&
+          (input.meta || input.control) &&
+          !input.shift &&
+          !input.alt
+        ) {
+          const settings = databaseAPI.dbGet('settings-general') || {}
+          const closeShortcutEnabled = settings?.builtinAppShortcutsEnabled?.closePlugin !== false
+          if (!closeShortcutEnabled) {
+            // 禁用时不拦截，让按键正常传到渲染进程（供 HotkeyInput 录制）
+            return
+          }
+        }
+
         // 只在主搜索界面生效，插件打开时忽略应用快捷键
         if (pluginManager.getCurrentPluginPath() !== null) {
           return
@@ -1098,6 +1112,19 @@ class WindowManager {
       await api.handleGlobalShortcutTrigger(target)
     } catch (error) {
       console.error('[Window] 处理应用快捷键失败:', error)
+    }
+  }
+
+  /**
+   * 检查 Cmd+Q 内置快捷键（killPlugin）是否被用户禁用
+   * 用于 before-quit 事件：禁用时不隐藏窗口，让 Cmd+Q 可被用作呼出快捷键
+   */
+  public isKillPluginShortcutEnabled(): boolean {
+    try {
+      const settings = databaseAPI.dbGet('settings-general') || {}
+      return settings?.builtinAppShortcutsEnabled?.killPlugin !== false
+    } catch {
+      return true
     }
   }
 

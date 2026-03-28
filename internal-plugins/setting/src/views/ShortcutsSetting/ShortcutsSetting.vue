@@ -12,6 +12,18 @@ interface GlobalShortcut {
   shortcut: string
   target: string
   enabled: boolean
+  configurable?: boolean
+  configKey?: BuiltInShortcutKey
+}
+
+type BuiltInShortcutKey = 'search' | 'closePlugin' | 'killPlugin'
+
+type BuiltInShortcutConfig = Record<BuiltInShortcutKey, boolean>
+
+const DEFAULT_BUILTIN_SHORTCUTS_ENABLED: BuiltInShortcutConfig = {
+  search: true,
+  closePlugin: true,
+  killPlugin: true
 }
 
 // 获取平台信息
@@ -19,7 +31,7 @@ const isMac = ref(false)
 const isWindows = ref(false)
 
 // 基础内置快捷键配置（使用 MOD 占位符表示 Cmd/Ctrl）
-const baseBuiltInShortcuts = [
+const baseBuiltInShortcuts: GlobalShortcut[] = [
   {
     id: 'builtin-detach',
     shortcut: 'MOD+D',
@@ -30,6 +42,14 @@ const baseBuiltInShortcuts = [
     id: 'builtin-search',
     shortcut: 'MOD+F',
     target: '固定搜索框的文本，进行二次筛选',
+    enabled: true,
+    configurable: true,
+    configKey: 'search'
+  },
+  {
+    id: 'builtin-tab-target',
+    shortcut: 'Tab',
+    target: '在搜索框输入文字后，按 Tab 进入 Tab 键目标指令',
     enabled: true
   },
   {
@@ -42,13 +62,17 @@ const baseBuiltInShortcuts = [
     id: 'builtin-kill-plugin',
     shortcut: 'MOD+Q',
     target: '终止当前插件运行',
-    enabled: true
+    enabled: true,
+    configurable: true,
+    configKey: 'killPlugin'
   },
   {
     id: 'builtin-close-plugin',
     shortcut: 'MOD+W',
     target: '关闭插件/隐藏窗口',
-    enabled: true
+    enabled: true,
+    configurable: true,
+    configKey: 'closePlugin'
   },
   {
     id: 'builtin-devtools',
@@ -88,6 +112,7 @@ const globalShortcuts = ref<GlobalShortcut[]>([])
 const appShortcuts = ref<GlobalShortcut[]>([])
 const isDeleting = ref(false)
 const loading = ref(true)
+const builtInShortcutsEnabled = ref<BuiltInShortcutConfig>({ ...DEFAULT_BUILTIN_SHORTCUTS_ENABLED })
 
 // 当前显示的快捷键列表
 const currentShortcuts = computed(() => {
@@ -133,10 +158,50 @@ async function loadAppShortcuts(): Promise<void> {
 async function loadShortcuts(): Promise<void> {
   loading.value = true
   try {
-    await Promise.all([loadGlobalShortcuts(), loadAppShortcuts()])
+    await Promise.all([loadGlobalShortcuts(), loadAppShortcuts(), loadBuiltInShortcutSettings()])
   } finally {
     loading.value = false
   }
+}
+
+async function loadBuiltInShortcutSettings(): Promise<void> {
+  try {
+    const settings = (await window.ztools.internal.dbGet('settings-general')) || {}
+    const config = settings.builtinAppShortcutsEnabled || {}
+    builtInShortcutsEnabled.value = {
+      ...DEFAULT_BUILTIN_SHORTCUTS_ENABLED,
+      ...config
+    }
+  } catch (err) {
+    console.error('加载内置快捷键开关失败:', err)
+  }
+}
+
+async function handleToggleBuiltInShortcut(
+  key: BuiltInShortcutKey,
+  enabled: boolean
+): Promise<void> {
+  try {
+    const settings = (await window.ztools.internal.dbGet('settings-general')) || {}
+    const nextConfig = {
+      ...DEFAULT_BUILTIN_SHORTCUTS_ENABLED,
+      ...(settings.builtinAppShortcutsEnabled || {}),
+      [key]: enabled
+    }
+    settings.builtinAppShortcutsEnabled = nextConfig
+    await window.ztools.internal.dbPut('settings-general', settings)
+    builtInShortcutsEnabled.value = nextConfig
+    success(enabled ? '已启用内置快捷键' : '已禁用内置快捷键')
+  } catch (err: any) {
+    console.error('更新内置快捷键开关失败:', err)
+    error(`更新失败: ${err?.message || '未知错误'}`)
+  }
+}
+
+function handleBuiltInToggleChange(key: BuiltInShortcutKey, event: Event): void {
+  const target = event.target as HTMLInputElement | null
+  if (!target) return
+  void handleToggleBuiltInShortcut(key, target.checked)
 }
 
 // 保存全局快捷键列表
@@ -569,7 +634,22 @@ useJumpFunction<ShortcutsSettingJumpFunction>((state) => {
                   <div class="shortcut-desc">{{ shortcut.target }}</div>
                 </div>
                 <div class="shortcut-meta">
-                  <span class="built-in-badge">内置</span>
+                  <label
+                    v-if="shortcut.configurable && shortcut.configKey"
+                    class="toggle built-in-toggle"
+                    :title="
+                      builtInShortcutsEnabled[shortcut.configKey]
+                        ? '点击禁用该内置快捷键'
+                        : '点击启用该内置快捷键'
+                    "
+                  >
+                    <input
+                      :checked="builtInShortcutsEnabled[shortcut.configKey]"
+                      type="checkbox"
+                      @change="handleBuiltInToggleChange(shortcut.configKey, $event)"
+                    />
+                    <span class="toggle-slider"></span>
+                  </label>
                 </div>
               </div>
             </div>
@@ -839,16 +919,9 @@ useJumpFunction<ShortcutsSettingJumpFunction>((state) => {
   gap: 6px;
 }
 
-/* 内置徽章 */
-.built-in-badge {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  background: var(--control-bg);
-  padding: 3px 8px;
-  border-radius: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+.built-in-toggle {
+  transform: scale(0.85);
+  transform-origin: center;
 }
 
 /* 图标按钮颜色样式 */

@@ -1105,7 +1105,11 @@ async function saveSettings(): Promise<void> {
     // 只有自定义头像才保存到数据库，默认头像不保存
     const avatarToSave = avatar.value === defaultAvatar ? undefined : avatar.value
 
+    // 先读取现有设置，保留本页不管理的字段（如 builtinAppShortcutsEnabled）
+    const existing = (await window.ztools.internal.dbGet('settings-general')) || {}
+
     await window.ztools.internal.dbPut('settings-general', {
+      ...existing,
       opacity: opacity.value,
       windowDefaultHeight: windowDefaultHeight.value,
       hotkey: hotkey.value,

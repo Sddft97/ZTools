@@ -378,7 +378,7 @@ function onInput(event: Event): void {
   emit('update:modelValue', value)
 }
 
-function onKeydown(event: KeyboardEvent): void {
+async function onKeydown(event: KeyboardEvent): Promise<void> {
   // 如果正在输入法组合中,不触发键盘事件
   if (isComposing.value && event.key === 'Enter') {
     return
@@ -396,6 +396,11 @@ function onKeydown(event: KeyboardEvent): void {
 
   // 检测 Command+F (Mac) 或 Ctrl+F (Windows/Linux) 快捷键
   if (event.key === 'f' && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
+    const settings = (await window.ztools.dbGet('settings-general')) || {}
+    const isEnabled = settings?.builtinAppShortcutsEnabled?.search !== false
+    if (!isEnabled) {
+      return
+    }
     // 如果输入框有文本内容，将其转为二次筛选状态
     const inputText = props.modelValue?.trim()
     if (inputText && inputText.length > 0) {
