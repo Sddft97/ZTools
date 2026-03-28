@@ -163,6 +163,27 @@ async function handleClearData(): Promise<void> {
   }
 }
 
+const isExportingAll = ref(false)
+
+// 导出全部数据
+async function handleExportAllData(): Promise<void> {
+  if (isExportingAll.value) return
+  isExportingAll.value = true
+  try {
+    const result = await (window.ztools.internal as any).exportAllData()
+    if (result.success) {
+      success('全部数据已导出到下载目录')
+    } else {
+      error(`导出失败: ${result.error}`)
+    }
+  } catch (err: any) {
+    console.error('导出全部数据失败:', err)
+    error(`导出失败: ${err.message || '未知错误'}`)
+  } finally {
+    isExportingAll.value = false
+  }
+}
+
 // 处理 ESC 按键
 function handleKeydown(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
@@ -191,6 +212,13 @@ onUnmounted(() => {
     <!-- 主内容：插件列表 -->
     <Transition name="list-slide">
       <div v-show="currentLevel === 'main'" class="main-content">
+        <div v-if="isLoaded && filteredPluginDataList.length > 0" class="page-header-actions">
+          <button class="btn btn-sm" :disabled="isExportingAll" @click="handleExportAllData">
+            <div class="i-z-download font-size-14px" />
+            <span>{{ isExportingAll ? '导出中...' : '导出全部数据' }}</span>
+          </button>
+        </div>
+
         <div v-if="isLoaded && filteredPluginDataList.length === 0" class="empty">
           <p>暂无插件数据</p>
         </div>
@@ -380,6 +408,18 @@ onUnmounted(() => {
   padding: 40px 20px;
   color: var(--text-secondary);
   font-size: 14px;
+}
+
+.page-header-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.page-header-actions .btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .plugin-list {

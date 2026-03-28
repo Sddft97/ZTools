@@ -187,6 +187,7 @@ const expandedDataId = ref<string>('')
 const currentDocContent = ref<any>(null)
 const currentDocType = ref<'document' | 'attachment'>('document')
 const isClearing = ref(false)
+const isExporting = ref(false)
 
 // 内存信息状态
 const memoryInfo = ref<{ private: number; shared: number; total: number } | null>(null)
@@ -333,6 +334,26 @@ async function handleClearAllData(): Promise<void> {
     error(`清除失败: ${err.message || '未知错误'}`)
   } finally {
     isClearing.value = false
+  }
+}
+
+// 导出插件全部数据
+async function handleExportAllData(): Promise<void> {
+  if (!props.plugin.name || isExporting.value) return
+
+  isExporting.value = true
+  try {
+    const result = await (window.ztools.internal as any).exportPluginData(props.plugin.name)
+    if (result.success) {
+      success('数据已导出到下载目录')
+    } else {
+      error(`导出失败: ${result.error}`)
+    }
+  } catch (err: any) {
+    console.error('导出插件数据失败:', err)
+    error(`导出失败: ${err.message || '未知错误'}`)
+  } finally {
+    isExporting.value = false
   }
 }
 
@@ -980,6 +1001,13 @@ watch(
           <div v-else-if="docKeys && docKeys.length > 0" class="data-container">
             <div class="data-header-actions">
               <button
+                class="btn btn-sm btn-secondary"
+                :disabled="isExporting"
+                @click="handleExportAllData"
+              >
+                {{ isExporting ? '导出中...' : '导出全部数据' }}
+              </button>
+              <button
                 class="btn btn-sm btn-danger"
                 :disabled="isClearing"
                 @click="handleClearAllData"
@@ -1581,6 +1609,7 @@ watch(
 .data-header-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
   padding: 0 4px;
 }
 

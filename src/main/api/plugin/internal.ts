@@ -1,4 +1,6 @@
-import { app, IpcMainInvokeEvent, ipcMain } from 'electron'
+import { app, IpcMainInvokeEvent, ipcMain, shell } from 'electron'
+import fs from 'fs'
+import path from 'path'
 import type { PluginManager } from '../../managers/pluginManager'
 import windowManager from '../../managers/windowManager.js'
 import logCollector from '../../core/logCollector.js'
@@ -27,6 +29,43 @@ class PermissionDeniedError extends Error {
   constructor(apiName: string) {
     super(`API "${apiName}" 仅限内置插件调用`)
     this.name = 'PermissionDeniedError'
+  }
+}
+
+/**
+ * 格式化时间为 YYYYMMDDHHmmss
+ */
+function formatTimestamp(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return (
+    String(date.getFullYear()) +
+    pad(date.getMonth() + 1) +
+    pad(date.getDate()) +
+    pad(date.getHours()) +
+    pad(date.getMinutes()) +
+    pad(date.getSeconds())
+  )
+}
+
+/**
+ * 将指定插件的所有文档导出为 JSON 文件到目标目录
+ */
+async function exportPluginDocsToDir(pluginName: string, targetDir: string): Promise<void> {
+  const keysResult = await databaseAPI.getPluginDocKeys(pluginName)
+  if (!keysResult.success) return
+  const keys: Array<{ key: string; type: string }> = keysResult.data || []
+  for (const item of keys) {
+    const docResult = await databaseAPI.getPluginDoc(pluginName, item.key)
+    if (docResult.success) {
+      const safeKey = item.key.replace(/[/\\:*?"<>|]/g, '_')
+      const filePath = path.join(targetDir, `${safeKey}.json`)
+      const content = JSON.stringify(
+        { key: item.key, type: item.type, data: docResult.data },
+        null,
+        2
+      )
+      await fs.promises.writeFile(filePath, content, 'utf-8')
+    }
   }
 }
 
@@ -251,6 +290,56 @@ export class InternalPluginAPI {
         throw new PermissionDeniedError('internal:clear-plugin-data')
       }
       return await databaseAPI.clearPluginData(pluginName)
+    })
+
+    ipcMain.handle('internal:export-plugin-data', async (event, pluginName: string) => {
+      if (!requireInternalPlugin(this.pluginManager, event)) {
+        throw new PermissionDeniedError('internal:export-plugin-data')
+      }
+      try {
+        const ts = formatTimestamp(new Date())
+        const downloadsDir = app.getPath('downloads')
+        const safePluginName = pluginName.replace(/[/\\:*?"<>|]/g, '_')
+        const exportDir = path.join(downloadsDir, `${safePluginName}-${ts}`)
+        await fs.promises.mkdir(exportDir, { recursive: true })
+        await exportPluginDocsToDir(pluginName, exportDir)
+        shell.showItemInFolder(exportDir)
+        return { success: true, folderPath: exportDir }
+      } catch (error: unknown) {
+        console.error('[Internal API] 导出插件数据失败:', error)
+        return { success: false, error: error instanceof Error ? error.message : '导出失败' }
+      }
+    })
+
+    ipcMain.handle('internal:export-all-data', async (event) => {
+      if (!requireInternalPlugin(this.pluginManager, event)) {
+        throw new PermissionDeniedError('internal:export-all-data')
+      }
+      try {
+        const statsResult = await databaseAPI.getPluginDataStats()
+        if (!statsResult.success) {
+          return { success: false, error: statsResult.error || '获取数据列表失败' }
+        }
+        const plugins: Array<{ pluginName: string }> = statsResult.data || []
+
+        const ts = formatTimestamp(new Date())
+        const downloadsDir = app.getPath('downloads')
+        const rootDir = path.join(downloadsDir, `ztools-data-${ts}`)
+        await fs.promises.mkdir(rootDir, { recursive: true })
+
+        for (const plugin of plugins) {
+          const safePluginName = plugin.pluginName.replace(/[/\\:*?"<>|]/g, '_')
+          const pluginDir = path.join(rootDir, safePluginName)
+          await fs.promises.mkdir(pluginDir, { recursive: true })
+          await exportPluginDocsToDir(plugin.pluginName, pluginDir)
+        }
+
+        shell.showItemInFolder(rootDir)
+        return { success: true, folderPath: rootDir }
+      } catch (error: unknown) {
+        console.error('[Internal API] 导出全部数据失败:', error)
+        return { success: false, error: error instanceof Error ? error.message : '导出失败' }
+      }
     })
 
     ipcMain.handle('internal:package-plugin', async (event, pluginPath: string) => {
