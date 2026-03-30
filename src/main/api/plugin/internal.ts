@@ -157,6 +157,23 @@ export class InternalPluginAPI {
       return await (pluginsAPI as any).getPlugins()
     })
 
+    ipcMain.handle('internal:get-disabled-plugins', async (event) => {
+      if (!requireInternalPlugin(this.pluginManager, event)) {
+        throw new PermissionDeniedError('internal:get-disabled-plugins')
+      }
+      return (pluginsAPI as any).getDisabledPlugins()
+    })
+
+    ipcMain.handle(
+      'internal:set-plugin-disabled',
+      async (event, pluginPath: string, disabled: boolean) => {
+        if (!requireInternalPlugin(this.pluginManager, event)) {
+          throw new PermissionDeniedError('internal:set-plugin-disabled')
+        }
+        return await (pluginsAPI as any).setPluginDisabled(pluginPath, disabled)
+      }
+    )
+
     ipcMain.handle('internal:get-all-plugins', async (event) => {
       if (!requireInternalPlugin(this.pluginManager, event)) {
         throw new PermissionDeniedError('internal:get-all-plugins')

@@ -40,6 +40,11 @@ declare global {
             isDevelopment?: boolean
           }>
         >
+        getDisabledPlugins: () => Promise<string[]>
+        setPluginDisabled: (
+          pluginPath: string,
+          disabled: boolean
+        ) => Promise<{ success: boolean; error?: string }>
         getAllPlugins: () => Promise<
           Array<{
             name: string

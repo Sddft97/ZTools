@@ -5,6 +5,7 @@ import { is } from '@electron-toolkit/utils'
 import { MouseMonitor, WindowManager, type MouseMonitorResult } from './native/index.js'
 import { launchApp } from './commandLauncher/index.js'
 import databaseAPI from '../api/shared/database.js'
+import pluginsAPI from '../api/renderer/plugins.js'
 import windowManager from '../managers/windowManager.js'
 import clipboardManager from '../managers/clipboardManager.js'
 import { readClipboardFiles } from '../utils/clipboardFiles.js'
@@ -521,6 +522,37 @@ class SuperPanelManager {
     }
   }
 
+  private filterPinnedCommandsForDisplay(commands: any[]): any[] {
+    const disabledPluginPaths = pluginsAPI.getDisabledPluginSet()
+    const visibleCommands: any[] = []
+
+    for (const command of commands) {
+      if (command?.isFolder && Array.isArray(command.items)) {
+        const visibleItems = command.items.filter(
+          (item: any) => !(item?.type === 'plugin' && disabledPluginPaths.has(item.path))
+        )
+
+        if (visibleItems.length === 1) {
+          visibleCommands.push(visibleItems[0])
+        } else if (visibleItems.length > 1) {
+          visibleCommands.push({
+            ...command,
+            items: visibleItems
+          })
+        }
+        continue
+      }
+
+      if (command?.type === 'plugin' && disabledPluginPaths.has(command.path)) {
+        continue
+      }
+
+      visibleCommands.push(command)
+    }
+
+    return visibleCommands
+  }
+
   /**
    * 加载固定列表
    */
@@ -533,10 +565,12 @@ class SuperPanelManager {
         pinnedCommands = []
       }
 
+      const visiblePinnedCommands = this.filterPinnedCommandsForDisplay(pinnedCommands)
+
       // 发送固定列表到超级面板窗口
       this.sendToSuperPanel('super-panel-data', {
         type: 'pinned',
-        commands: pinnedCommands,
+        commands: visiblePinnedCommands,
         windowInfo: this.currentWindowInfo
       })
     } catch (error) {

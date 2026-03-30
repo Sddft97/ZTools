@@ -826,12 +826,10 @@ onMounted(async () => {
     })
   })
 
-  // 监听插件变化事件（安装或删除插件后刷新指令列表）
+  // 监听插件变化事件（安装、删除、禁用状态变化后刷新相关数据）
   window.ztools.onPluginsChanged(async () => {
-    console.log('插件列表已变化，重新加载指令列表和用户数据')
-    // 先刷新指令列表，再刷新历史/固定（历史过滤依赖最新的指令列表）
-    await commandDataStore.loadCommands()
-    await commandDataStore.reloadUserData()
+    console.log('插件列表已变化，重新加载插件可用性相关数据')
+    await commandDataStore.reloadPluginAvailabilityData()
   })
 
   // 监听更新下载完成事件

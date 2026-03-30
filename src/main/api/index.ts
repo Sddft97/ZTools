@@ -309,7 +309,10 @@ class APIManager {
   private async handleGlobalShortcut(target: string): Promise<void> {
     try {
       const plugins: any = databaseAPI.dbGet('plugins')
-      const pluginList = Array.isArray(plugins) ? plugins : []
+      const disabledPlugins = pluginsAPI.getDisabledPluginSet()
+      const pluginList = Array.isArray(plugins)
+        ? plugins.filter((plugin: any) => !disabledPlugins.has(plugin.path))
+        : []
 
       const parts = target.split('/')
 

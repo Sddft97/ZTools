@@ -37,6 +37,7 @@ const props = defineProps<{
   isLoading?: boolean
   isRunning?: boolean
   isPinned?: boolean
+  isDisabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -50,6 +51,7 @@ const emit = defineEmits<{
   (e: 'package'): void
   (e: 'reload'): void
   (e: 'toggle-pin'): void
+  (e: 'toggle-disabled', disabled: boolean): void
 }>()
 
 const { success, error, confirm } = useToast()
@@ -168,6 +170,13 @@ async function toggleAutoStart(): Promise<void> {
 
   await window.ztools.internal.dbPut('autoStartPlugin', list)
   isAutoStart.value = list.includes(props.plugin.name)
+}
+
+function handleDisabledToggle(event: Event): void {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+  // checkbox.checked 表示"启用"状态，发射的参数表示"禁用"状态，所以取反
+  emit('toggle-disabled', !target.checked)
 }
 
 // Tab 状态
@@ -619,7 +628,12 @@ watch(
   <DetailPanel title="插件详情" @back="emit('back')">
     <template #header-right>
       <template v-if="plugin.installed && !canUpgrade">
-        <button class="icon-btn topbar-action-btn open-btn" title="打开" @click="emit('open')">
+        <button
+          class="icon-btn topbar-action-btn open-btn"
+          title="打开"
+          :disabled="isDisabled"
+          @click="emit('open')"
+        >
           <div class="i-z-play font-size-16px" />
         </button>
         <button
@@ -690,6 +704,16 @@ watch(
             <div v-if="showSettingsDropdown" class="settings-dropdown" @click.stop>
               <div class="settings-dropdown-item">
                 <div class="settings-item-info">
+                  <span class="settings-item-label">启用插件</span>
+                  <span class="settings-item-desc">关闭后插件会从搜索和运行入口中隐藏</span>
+                </div>
+                <label class="toggle">
+                  <input type="checkbox" :checked="!isDisabled" @change="handleDisabledToggle" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="settings-dropdown-item">
+                <div class="settings-item-info">
                   <span class="settings-item-label">退出即结束</span>
                   <span class="settings-item-desc">退出到后台时立即终止插件进程</span>
                 </div>
@@ -739,6 +763,7 @@ watch(
           <div class="detail-info">
             <div class="detail-title">
               <span class="detail-name">{{ plugin.title || plugin.name }}</span>
+              <span v-if="isDisabled" class="detail-disabled-badge">已禁用</span>
             </div>
             <div class="detail-desc">{{ plugin.description || '暂无描述' }}</div>
           </div>
@@ -1336,6 +1361,17 @@ watch(
   font-size: 18px;
   font-weight: 700;
   color: var(--text-color);
+}
+
+.detail-disabled-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--warning-color);
+  background: color-mix(in srgb, var(--warning-color) 12%, transparent);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--warning-color) 35%, transparent);
 }
 
 .detail-desc {

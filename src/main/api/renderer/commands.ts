@@ -292,6 +292,9 @@ export class AppsAPI {
     try {
       // 判断是插件还是直接启动
       if (type === 'plugin') {
+        if (pluginsAPI.isPluginDisabled(appPath)) {
+          return { success: false, error: '插件已禁用' }
+        }
         // 如果没有传 featureCode，自动查找第一个非匹配 feature
         if (!featureCode) {
           const result = await this.getDefaultFeatureCode(appPath)

@@ -48,6 +48,9 @@ const api = {
   showContextMenu: (menuItems: any[]) => ipcRenderer.invoke('show-context-menu', menuItems),
   getPlugins: () => ipcRenderer.invoke('get-plugins'),
   getAllPlugins: () => ipcRenderer.invoke('get-all-plugins'),
+  getDisabledPlugins: () => ipcRenderer.invoke('get-disabled-plugins'),
+  setPluginDisabled: (pluginPath: string, disabled: boolean) =>
+    ipcRenderer.invoke('set-plugin-disabled', pluginPath, disabled),
   importPlugin: () => ipcRenderer.invoke('import-plugin'),
   importDevPlugin: (pluginJsonPath?: string) =>
     ipcRenderer.invoke('import-dev-plugin', pluginJsonPath),
@@ -460,6 +463,11 @@ declare global {
       showContextMenu: (menuItems: any[]) => Promise<void>
       getPlugins: () => Promise<any[]>
       getAllPlugins: () => Promise<any[]>
+      getDisabledPlugins: () => Promise<string[]>
+      setPluginDisabled: (
+        pluginPath: string,
+        disabled: boolean
+      ) => Promise<{ success: boolean; error?: string }>
       importPlugin: () => Promise<{ success: boolean; error?: string }>
       importDevPlugin: (pluginJsonPath?: string) => Promise<{ success: boolean; error?: string }>
       fetchPluginMarket: () => Promise<{ success: boolean; data?: any; error?: string }>

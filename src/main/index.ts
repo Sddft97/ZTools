@@ -3,6 +3,7 @@ import { app, BrowserWindow, session, webContents } from 'electron'
 import log from 'electron-log'
 import path from 'path'
 import api from './api/index'
+import pluginsAPI from './api/renderer/plugins'
 import appWatcher from './appWatcher'
 import detachedWindowManager from './core/detachedWindowManager'
 import floatingBallManager from './core/floatingBallManager'
@@ -134,12 +135,13 @@ app.whenReady().then(async () => {
   if (mainWindow) {
     try {
       const autoStartPlugins = api.dbGet('autoStartPlugin')
+      const disabledPlugins = pluginsAPI.getDisabledPluginSet()
       if (autoStartPlugins && Array.isArray(autoStartPlugins) && autoStartPlugins.length > 0) {
         const plugins = api.dbGet('plugins')
         if (plugins && Array.isArray(plugins)) {
           for (const pluginName of autoStartPlugins) {
             const plugin = plugins.find((p: any) => p.name === pluginName)
-            if (plugin?.path) {
+            if (plugin?.path && !disabledPlugins.has(plugin.path)) {
               console.log('[Main] 自动启动插件:', pluginName)
               pluginManager.preloadPlugin(plugin.path).catch((error) => {
                 console.error('[Main] 自动启动插件失败:', pluginName, error)

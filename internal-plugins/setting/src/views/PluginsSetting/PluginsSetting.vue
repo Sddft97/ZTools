@@ -14,6 +14,7 @@ const { success, error, warning, info, confirm } = useToast()
 
 // 插件相关状态
 const plugins = ref<any[]>([])
+const disabledPluginPaths = ref<string[]>([])
 const runningPlugins = ref<string[]>([])
 const isLoading = ref(true)
 const isImporting = ref(false)
@@ -101,6 +102,10 @@ function isPluginPinned(pluginPath: string): boolean {
   return pinnedPluginPaths.value.includes(pluginPath)
 }
 
+function isPluginDisabled(pluginPath: string): boolean {
+  return disabledPluginPaths.value.includes(pluginPath)
+}
+
 async function togglePin(plugin: any): Promise<void> {
   const path = plugin.path
   const idx = pinnedPluginPaths.value.indexOf(path)
@@ -122,7 +127,11 @@ async function togglePin(plugin: any): Promise<void> {
 async function loadPlugins(): Promise<void> {
   isLoading.value = true
   try {
-    const installedPlugins = await window.ztools.internal.getPlugins()
+    const [installedPlugins, disabledPlugins] = await Promise.all([
+      window.ztools.internal.getPlugins(),
+      window.ztools.internal.getDisabledPlugins()
+    ])
+    disabledPluginPaths.value = disabledPlugins
     plugins.value = buildPluginList(installedPlugins)
     await loadRunningPlugins()
   } catch (err) {
@@ -467,6 +476,11 @@ async function handleKillAllPlugins(): Promise<void> {
 
 // 打开插件
 async function handleOpenPlugin(plugin: any): Promise<void> {
+  if (isPluginDisabled(plugin.path)) {
+    warning('插件已禁用，请先在设置中启用')
+    return
+  }
+
   try {
     const result = await window.ztools.internal.launch({
       path: plugin.path,
@@ -541,6 +555,27 @@ async function handleReloadPluginFromDetail(plugin: any): Promise<void> {
     error(`重载插件失败: ${err.message || '未知错误'}`)
   } finally {
     isReloading.value = false
+  }
+}
+
+async function handleTogglePluginDisabled(plugin: any, disabled: boolean): Promise<void> {
+  try {
+    const result = await window.ztools.internal.setPluginDisabled(plugin.path, disabled)
+    if (!result.success) {
+      error(`更新插件状态失败: ${result.error || '未知错误'}`)
+      return
+    }
+
+    await loadPlugins()
+    const updated = plugins.value.find((p) => p.path === plugin.path)
+    if (updated && selectedPlugin.value?.path === plugin.path) {
+      selectedPlugin.value = updated
+    }
+
+    success(disabled ? '插件已禁用' : '插件已启用')
+  } catch (err: any) {
+    console.error('更新插件禁用状态失败:', err)
+    error(`更新插件状态失败: ${err.message || '未知错误'}`)
   }
 }
 
@@ -911,6 +946,7 @@ async function handleInstallFromNpm(data: {
                 {{ plugin.title || plugin.name }}
                 <span class="plugin-version">v{{ plugin.version }}</span>
                 <span v-if="plugin.isDevelopment" class="dev-badge">开发中</span>
+                <span v-if="isPluginDisabled(plugin.path)" class="disabled-badge">已禁用</span>
                 <span v-if="isPluginRunning(plugin.path)" class="running-badge">
                   <span class="status-dot"></span>
                   运行中
@@ -922,6 +958,7 @@ async function handleInstallFromNpm(data: {
             <div class="plugin-meta">
               <button
                 class="icon-btn open-btn"
+                :disabled="isPluginDisabled(plugin.path)"
                 title="打开插件"
                 @click.stop="handleOpenPlugin(plugin)"
               >
@@ -1057,6 +1094,7 @@ async function handleInstallFromNpm(data: {
         :plugin="selectedPlugin"
         :is-running="isPluginRunning(selectedPlugin.path)"
         :is-pinned="isPluginPinned(selectedPlugin.path)"
+        :is-disabled="isPluginDisabled(selectedPlugin.path)"
         @back="closePluginDetail"
         @open="handleOpenPlugin(selectedPlugin)"
         @uninstall="handleUninstallFromDetail(selectedPlugin)"
@@ -1065,6 +1103,7 @@ async function handleInstallFromNpm(data: {
         @package="handlePackagePlugin(selectedPlugin)"
         @reload="handleReloadPluginFromDetail(selectedPlugin)"
         @toggle-pin="togglePin(selectedPlugin)"
+        @toggle-disabled="handleTogglePluginDisabled(selectedPlugin, $event)"
       />
     </Transition>
 
@@ -1269,6 +1308,17 @@ async function handleInstallFromNpm(data: {
   padding: 2px 8px;
   border-radius: 4px;
   border: 1px solid var(--purple-border);
+}
+
+.disabled-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--warning-color);
+  background: color-mix(in srgb, var(--warning-color) 12%, transparent);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--warning-color) 35%, transparent);
 }
 
 .running-badge {
