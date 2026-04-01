@@ -485,7 +485,7 @@ onUnmounted(() => {
               <!-- 分类导航区块 -->
               <div v-else-if="section.type === 'navigation'" class="storefront-section">
                 <div v-if="section.title" class="section-header">
-                  <span class="section-title">{{ section.title }}</span>
+                  <span class="storefront-title">{{ section.title }}</span>
                 </div>
                 <div class="navigation-grid">
                   <CategoryCard
@@ -507,7 +507,7 @@ onUnmounted(() => {
                 class="storefront-section"
               >
                 <div v-if="section.title || section.type === 'random'" class="section-header">
-                  <span v-if="section.title" class="section-title">{{ section.title }}</span>
+                  <span v-if="section.title" class="storefront-title">{{ section.title }}</span>
                   <RefreshButton
                     v-if="section.type === 'random'"
                     @click="shuffleRandomSection(section)"
@@ -707,7 +707,7 @@ onUnmounted(() => {
   padding: 0 2px;
 }
 
-.section-title {
+.storefront-title {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-color);

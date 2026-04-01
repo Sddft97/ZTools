@@ -342,7 +342,7 @@ onUnmounted(() => {
 
 .section-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 600;
   color: var(--text-color);
 }

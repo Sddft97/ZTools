@@ -177,24 +177,6 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 滚动条样式 */
-.dropdown-menu::-webkit-scrollbar {
-  width: 6px;
-}
-
-.dropdown-menu::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.dropdown-menu::-webkit-scrollbar-thumb {
-  background-color: var(--control-border);
-  border-radius: 3px;
-}
-
-.dropdown-menu::-webkit-scrollbar-thumb:hover {
-  background-color: var(--text-secondary);
-}
-
 .dropdown-item {
   display: flex;
   align-items: center;

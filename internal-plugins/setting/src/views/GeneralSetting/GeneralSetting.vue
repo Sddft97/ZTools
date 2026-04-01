@@ -2150,13 +2150,13 @@ onUnmounted(() => {
 }
 
 .setting-label > span:first-child {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-color);
 }
 
 .setting-desc {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
 }
 

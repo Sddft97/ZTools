@@ -282,11 +282,12 @@ class ToastManager {
             background: transparent;
           }
           .toast-message::-webkit-scrollbar-thumb {
-            background: ${isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)'};
+            background: ${isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)'};
             border-radius: 3px;
+            transition: background 0.2s ease;
           }
           .toast-message::-webkit-scrollbar-thumb:hover {
-            background: ${isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.3)'};
+            background: ${isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)'};
           }
         </style>
       </head>

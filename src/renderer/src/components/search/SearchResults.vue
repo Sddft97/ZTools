@@ -1092,40 +1092,6 @@ defineExpose({
   user-select: none;
   padding: 0 0 2px 0;
   border-radius: 0;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
-}
-
-.scrollable-content::-webkit-scrollbar {
-  width: 6px;
-}
-
-.scrollable-content::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.scrollable-content::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.2);
-  border-radius: 3px;
-  transition: background-color 0.2s;
-}
-
-.scrollable-content::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.3);
-}
-
-@media (prefers-color-scheme: dark) {
-  .scrollable-content {
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
-  }
-
-  .scrollable-content::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.2);
-  }
-
-  .scrollable-content::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.3);
-  }
 }
 
 .list-mode-results {

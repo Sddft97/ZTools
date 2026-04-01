@@ -102,7 +102,7 @@ function shuffleSection(): void {
 
       <div v-for="section in resolvedSections" :key="section.key" class="category-detail-section">
         <div v-if="section.title || section.type === 'random'" class="section-header">
-          <span v-if="section.title" class="section-title">{{ section.title }}</span>
+          <span v-if="section.title" class="storefront-title">{{ section.title }}</span>
           <RefreshButton v-if="section.type === 'random'" @click="shuffleSection()" />
         </div>
         <div class="market-grid">
@@ -164,7 +164,7 @@ function shuffleSection(): void {
   padding: 0 2px;
 }
 
-.section-title {
+.storefront-title {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-color);

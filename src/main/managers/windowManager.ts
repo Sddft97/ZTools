@@ -19,7 +19,7 @@ import databaseAPI from '../api/shared/database'
 import doubleTapManager from '../core/doubleTapManager.js'
 import clipboardManager from './clipboardManager'
 
-import { WINDOW_INITIAL_HEIGHT, WINDOW_DEFAULT_HEIGHT, WINDOW_WIDTH } from '../common/constants'
+import { WINDOW_DEFAULT_HEIGHT, WINDOW_INITIAL_HEIGHT, WINDOW_WIDTH } from '../common/constants'
 import detachedWindowManager from '../core/detachedWindowManager'
 import superPanelManager from '../core/superPanelManager'
 import { applyWindowMaterial, getDefaultWindowMaterial } from '../utils/windowUtils'

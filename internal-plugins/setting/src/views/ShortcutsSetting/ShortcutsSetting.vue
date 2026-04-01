@@ -550,7 +550,7 @@ useJumpFunction<ShortcutsSettingJumpFunction>((state) => {
           <template v-if="activeTab === 'app'">
             <!-- 自定义应用快捷键区域 -->
             <div class="shortcut-section">
-              <div class="section-title">自定义快捷键</div>
+              <div class="category-label">自定义快捷键</div>
               <!-- 有自定义快捷键时显示列表 -->
               <div v-if="filteredShortcuts.length > 0">
                 <div
@@ -623,7 +623,7 @@ useJumpFunction<ShortcutsSettingJumpFunction>((state) => {
 
             <!-- 内置快捷键列表 -->
             <div v-if="builtInAppShortcuts.length > 0" class="shortcut-section">
-              <div class="section-title">内置快捷键</div>
+              <div class="category-label">内置快捷键</div>
               <div
                 v-for="shortcut in builtInAppShortcuts"
                 :key="shortcut.id"
@@ -859,7 +859,7 @@ useJumpFunction<ShortcutsSettingJumpFunction>((state) => {
   gap: 8px;
 }
 
-.section-title {
+.category-label {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);

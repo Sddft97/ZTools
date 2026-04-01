@@ -25,35 +25,36 @@ export const GLOBAL_SCROLLBAR_CSS = `
 
   ::-webkit-scrollbar-thumb {
     border-radius: 3px !important;
+    transition: background 0.2s ease !important;
   }
 
   /* 亮色模式滚动条 */
   @media (prefers-color-scheme: light) {
     ::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.15) !important;
+      background: rgba(0, 0, 0, 0.08) !important;
     }
 
     ::-webkit-scrollbar-thumb:hover {
-      background: rgba(0, 0, 0, 0.25) !important;
+      background: rgba(0, 0, 0, 0.15) !important;
     }
 
     ::-webkit-scrollbar-thumb:active {
-      background: rgba(0, 0, 0, 0.35) !important;
+      background: rgba(0, 0, 0, 0.25) !important;
     }
   }
 
   /* 暗色模式滚动条 */
   @media (prefers-color-scheme: dark) {
     ::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.2) !important;
+      background: rgba(255, 255, 255, 0.1) !important;
     }
 
     ::-webkit-scrollbar-thumb:hover {
-      background: rgba(255, 255, 255, 0.35) !important;
+      background: rgba(255, 255, 255, 0.2) !important;
     }
 
     ::-webkit-scrollbar-thumb:active {
-      background: rgba(255, 255, 255, 0.5) !important;
+      background: rgba(255, 255, 255, 0.35) !important;
     }
   }
 `

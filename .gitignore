@@ -16,3 +16,4 @@ out
 /.shared
 .pnpm-store/*
 _*
+/.sanshu-memory

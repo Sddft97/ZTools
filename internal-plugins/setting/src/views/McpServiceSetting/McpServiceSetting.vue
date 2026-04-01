@@ -184,162 +184,110 @@ onMounted(() => {
   <div class="content-panel">
     <Transition name="list-slide">
       <div v-show="!selectedTool" class="scrollable-content">
-        <div class="service-hero">
-          <div class="service-copy">
-            <div class="service-meta">
-              <h2 class="service-title">MCP 服务</h2>
-              <p class="service-desc">
-                使用固定端口 {{ MCP_PORT }} 对外暴露插件工具，复制后的地址会自动拼上访问密钥。
-              </p>
-            </div>
+        <h2 class="section-title">MCP 服务</h2>
+        <p class="section-desc">
+          使用固定端口 {{ MCP_PORT }} 对外暴露插件工具，复制后的地址会自动拼上访问密钥。
+        </p>
 
-            <div class="service-actions">
-              <label class="toggle">
-                <input v-model="enabled" type="checkbox" @change="handleServiceToggle" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
+        <div class="setting-item">
+          <div class="setting-label">
+            <span>启用 MCP 服务</span>
+            <span class="setting-desc">开启后外部 MCP 客户端可连接并调用插件工具</span>
           </div>
-
-          <div class="service-foot">
-            <div class="service-endpoint-wrap">
-              <code class="service-endpoint">{{ mcpEndpoint }}</code>
-              <button
-                class="icon-button"
-                type="button"
-                title="复制带密钥地址"
-                @click="copyText(mcpEndpointWithKey, '带密钥地址已复制')"
-              >
-                <svg
-                  class="icon-svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden="true"
-                >
-                  <rect
-                    x="9"
-                    y="9"
-                    width="10"
-                    height="10"
-                    rx="2"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                  />
-                  <path
-                    d="M15 9V7C15 5.89543 14.1046 5 13 5H7C5.89543 5 5 5.89543 5 7V13C5 14.1046 5.89543 15 7 15H9"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                  />
-                </svg>
-              </button>
-            </div>
-            <span class="service-status" :class="{ active: running }">
-              {{ running ? '运行中' : '未启动' }}
-            </span>
-          </div>
+          <label class="toggle">
+            <input v-model="enabled" type="checkbox" @change="handleServiceToggle" />
+            <span class="toggle-slider"></span>
+          </label>
         </div>
 
-        <div class="plugin-panel">
-          <div class="panel-head">
-            <div>
-              <h3 class="panel-title">支持 MCP 的插件</h3>
-              <p class="panel-desc">关闭某个插件后，它的所有 MCP 工具都会从服务端隐藏。</p>
+        <div v-if="enabled" class="service-config">
+          <div class="setting-item">
+            <label class="setting-label">服务地址</label>
+            <div class="address-row">
+              <code class="mono-text">{{ mcpEndpoint }}</code>
+              <button
+                class="btn btn-primary btn-sm"
+                @click="copyText(mcpEndpointWithKey, '带密钥地址已复制')"
+              >
+                复制
+              </button>
             </div>
-            <span class="panel-badge">{{ pluginGroups.length }}</span>
           </div>
 
-          <div v-if="pluginGroups.length" class="plugin-grid">
-            <div
-              v-for="plugin in pluginGroups"
-              :key="plugin.pluginPath"
-              class="plugin-accordion"
-              :class="{ expanded: expandedPluginPath === plugin.pluginPath }"
-            >
-              <div class="plugin-card">
-                <button
-                  class="plugin-card-head"
-                  type="button"
-                  @click="togglePluginExpand(plugin.pluginPath)"
-                >
-                  <div class="plugin-main">
-                    <div class="detail-title-wrap">
-                      <span class="accordion-arrow">{{
-                        expandedPluginPath === plugin.pluginPath ? '−' : '+'
-                      }}</span>
-                      <img
-                        v-if="plugin.pluginLogo"
-                        :src="plugin.pluginLogo"
-                        :alt="plugin.pluginName"
-                        class="plugin-logo"
-                      />
-                      <div v-else class="plugin-logo plugin-logo-fallback">
-                        {{ plugin.pluginName.slice(0, 1) }}
-                      </div>
+          <div class="status-bar">
+            <span class="status-dot" :class="{ active: running }"></span>
+            <span class="status-text">{{ running ? '服务运行中' : '服务未启动' }}</span>
+          </div>
 
-                      <div class="plugin-info">
-                        <div class="plugin-name-row">
-                          <span class="plugin-name">{{ plugin.pluginName }}</span>
-                          <span class="plugin-tool-count">{{ plugin.tools.length }} 个工具</span>
-                        </div>
-                        <p class="plugin-hint">
-                          {{ plugin.enabled ? '已向 MCP 暴露' : '已禁用 MCP 暴露' }}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+          <h3 class="subsection-title">
+            支持 MCP 的插件
+            <span class="count-badge">{{ pluginGroups.length }}</span>
+          </h3>
+          <p class="subsection-desc">关闭某个插件后，它的所有 MCP 工具都会从服务端隐藏。</p>
 
-                  <label class="toggle plugin-toggle" @click.stop>
-                    <input
-                      :checked="plugin.enabled"
-                      :disabled="savingPluginPath === plugin.pluginPath"
-                      type="checkbox"
-                      @change="handlePluginToggle(plugin, $event)"
+          <div v-if="pluginGroups.length" class="plugin-list">
+            <div v-for="plugin in pluginGroups" :key="plugin.pluginPath" class="plugin-item">
+              <button
+                class="plugin-head"
+                type="button"
+                @click="togglePluginExpand(plugin.pluginPath)"
+              >
+                <div class="plugin-left">
+                  <svg
+                    class="expand-icon"
+                    :class="{ expanded: expandedPluginPath === plugin.pluginPath }"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 12 12"
+                    fill="none"
+                  >
+                    <path
+                      d="M4.5 2.5L8 6L4.5 9.5"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
                     />
-                    <span class="toggle-slider"></span>
-                  </label>
-                </button>
+                  </svg>
+                  <img
+                    v-if="plugin.pluginLogo"
+                    :src="plugin.pluginLogo"
+                    :alt="plugin.pluginName"
+                    class="plugin-logo"
+                  />
+                  <div v-else class="plugin-logo plugin-logo-fallback">
+                    {{ plugin.pluginName.slice(0, 1) }}
+                  </div>
+                  <div class="plugin-info">
+                    <span class="plugin-name">{{ plugin.pluginName }}</span>
+                    <span class="plugin-meta"
+                      >{{ plugin.tools.length }} 个工具 ·
+                      {{ plugin.enabled ? '已暴露' : '已禁用' }}</span
+                    >
+                  </div>
+                </div>
+                <label class="toggle" @click.stop>
+                  <input
+                    :checked="plugin.enabled"
+                    :disabled="savingPluginPath === plugin.pluginPath"
+                    type="checkbox"
+                    @change="handlePluginToggle(plugin, $event)"
+                  />
+                  <span class="toggle-slider"></span>
+                </label>
+              </button>
 
-                <div v-if="expandedPluginPath === plugin.pluginPath" class="accordion-body">
-                  <div class="tool-list">
-                    <div v-for="tool in plugin.tools" :key="tool.mcpName" class="tool-card">
-                      <div class="tool-head">
-                        <div class="tool-meta">
-                          <code class="tool-mcp-name">{{ tool.mcpName }}</code>
-                          <code class="tool-name">{{ tool.toolName }}</code>
-                        </div>
-                        <button
-                          class="icon-button tool-detail-button"
-                          type="button"
-                          title="查看工具详情"
-                          @click="openToolDetail(tool)"
-                        >
-                          <svg
-                            class="icon-svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                            aria-hidden="true"
-                          >
-                            <circle
-                              cx="11"
-                              cy="11"
-                              r="6.5"
-                              stroke="currentColor"
-                              stroke-width="1.8"
-                            />
-                            <path
-                              d="M16 16L20 20"
-                              stroke="currentColor"
-                              stroke-width="1.8"
-                              stroke-linecap="round"
-                            />
-                          </svg>
-                        </button>
+              <div class="plugin-tools" :class="{ open: expandedPluginPath === plugin.pluginPath }">
+                <div class="plugin-tools-inner">
+                  <div v-for="tool in plugin.tools" :key="tool.mcpName" class="tool-item">
+                    <div class="tool-top">
+                      <div class="tool-names">
+                        <code class="tool-mcp-name">{{ tool.mcpName }}</code>
+                        <code class="tool-original-name">{{ tool.toolName }}</code>
                       </div>
-                      <p class="tool-desc">{{ tool.description }}</p>
+                      <button class="btn btn-sm" @click="openToolDetail(tool)">详情</button>
                     </div>
+                    <p class="tool-desc">{{ tool.description }}</p>
                   </div>
                 </div>
               </div>
@@ -357,9 +305,7 @@ onMounted(() => {
           <div class="tool-detail-card">
             <div class="tool-detail-header">
               <code class="tool-mcp-name">{{ selectedTool.mcpName }}</code>
-              <p class="panel-desc tool-detail-desc">
-                {{ selectedTool.pluginName }} 的 MCP 工具 JSON 描述
-              </p>
+              <p class="subsection-desc">{{ selectedTool.pluginName }} 的 MCP 工具 JSON 描述</p>
             </div>
             <pre class="tool-json">{{ selectedToolJson }}</pre>
           </div>
@@ -371,12 +317,10 @@ onMounted(() => {
 
 <style scoped>
 .content-panel {
-  position: relative;
   height: 100%;
   overflow: hidden;
-  background:
-    radial-gradient(circle at top right, rgba(79, 123, 255, 0.08), transparent 26%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 24%), var(--bg-color);
+  position: relative;
+  background: var(--bg-color);
 }
 
 .scrollable-content {
@@ -387,223 +331,154 @@ onMounted(() => {
   padding: 20px;
 }
 
-.list-slide-enter-active {
-  transition:
-    transform 0.2s ease-out,
-    opacity 0.15s ease;
-}
-
+.list-slide-enter-active,
 .list-slide-leave-active {
   transition:
-    transform 0.2s ease-in,
+    transform 0.2s ease,
     opacity 0.15s ease;
 }
 
-.list-slide-enter-from {
-  transform: translateX(-100%);
-  opacity: 0;
-}
-
-.list-slide-enter-to {
-  transform: translateX(0);
-  opacity: 1;
-}
-
-.list-slide-leave-from {
-  transform: translateX(0);
-  opacity: 1;
-}
-
+.list-slide-enter-from,
 .list-slide-leave-to {
   transform: translateX(-100%);
   opacity: 0;
 }
 
-.service-hero,
-.plugin-panel {
-  border: 1px solid var(--divider-color);
-  border-radius: 18px;
-  background: var(--card-bg);
-  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.05);
-}
-
-.service-hero {
-  padding: 22px 24px;
-}
-
-.service-copy,
-.service-foot,
-.panel-head,
-.plugin-card,
-.plugin-main,
-.plugin-name-row,
-.tool-head,
-.service-endpoint-wrap,
-.detail-title-wrap {
-  display: flex;
-  align-items: center;
-}
-
-.service-copy,
-.panel-head,
-.plugin-card {
-  justify-content: space-between;
-}
-
-.service-title,
-.panel-title {
-  margin: 0;
+.section-title {
+  font-size: 20px;
+  font-weight: 600;
   color: var(--text-color);
+  margin: 0 0 8px 0;
 }
 
-.service-title {
-  font-size: 24px;
-  font-weight: 700;
-}
-
-.service-desc,
-.panel-desc,
-.plugin-hint,
-.tool-desc {
-  margin: 0;
-  color: var(--text-secondary);
-}
-
-.service-desc,
-.panel-desc {
-  margin-top: 6px;
+.section-desc {
   font-size: 13px;
-  line-height: 1.6;
+  color: var(--text-secondary);
+  margin: 0 0 24px 0;
 }
 
-.service-actions {
+.setting-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
+  justify-content: space-between;
+  margin-bottom: 16px;
 }
 
-.service-foot {
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 18px;
-  padding-top: 16px;
+.setting-label {
+  font-size: 14px;
+  color: var(--text-color);
+  font-weight: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.setting-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.service-config {
+  margin-top: 24px;
+  padding-top: 24px;
   border-top: 1px solid var(--divider-color);
 }
 
-.service-endpoint,
-.tool-mcp-name,
-.tool-name {
-  font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
-}
-
-.service-endpoint {
-  padding: 9px 12px;
-  border-radius: 10px;
-  background: var(--hover-bg);
-  color: var(--text-color);
-  font-size: 12px;
-}
-
-.service-endpoint-wrap {
+.service-config .setting-item {
+  flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
-  min-width: 0;
 }
 
-.icon-button {
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--divider-color);
-  border-radius: 10px;
-  display: inline-flex;
+.address-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
   align-items: center;
-  justify-content: center;
-  background: var(--card-bg);
+}
+
+.mono-text {
+  flex: 1;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+  font-size: 13px;
+  padding: 8px 12px;
+  background: var(--hover-bg);
+  border-radius: 6px;
   color: var(--text-color);
-  cursor: pointer;
-  transition:
-    border-color 0.18s ease,
-    background 0.18s ease,
-    transform 0.18s ease;
+  word-break: break-all;
 }
 
-.icon-button:hover {
-  border-color: var(--primary-color, #4f7bff);
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+  padding: 10px 14px;
   background: var(--hover-bg);
-  transform: translateY(-1px);
+  border-radius: 8px;
 }
 
-.icon-svg {
-  width: 16px;
-  height: 16px;
-  display: block;
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transition: background 0.3s;
+  flex-shrink: 0;
 }
 
-.service-status {
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: var(--hover-bg);
+.status-dot.active {
+  background: var(--success-color, #34c759);
+  box-shadow: 0 0 6px var(--success-color, #34c759);
+}
+
+.status-text {
+  font-size: 13px;
   color: var(--text-secondary);
-  font-size: 12px;
 }
 
-.service-status.active {
-  background: rgba(52, 199, 89, 0.12);
-  color: var(--success-color, #34c759);
-}
-
-.plugin-panel {
-  margin-top: 18px;
-  padding: 20px;
-}
-
-.panel-badge {
-  min-width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--hover-bg);
+.subsection-title {
+  font-size: 16px;
+  font-weight: 600;
   color: var(--text-color);
-  font-size: 12px;
-  font-weight: 700;
+  margin: 0 0 6px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.plugin-grid,
-.tool-list {
+.count-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--hover-bg);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.subsection-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 16px 0;
+}
+
+.plugin-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 18px;
+  gap: 8px;
 }
 
-.plugin-card,
-.tool-card {
-  width: 100%;
+.plugin-item {
   border: 1px solid var(--divider-color);
-  border-radius: 16px;
-  background: var(--bg-color);
-}
-
-.plugin-card {
-  display: block;
+  border-radius: 8px;
+  background: var(--card-bg);
   overflow: hidden;
-  transition:
-    transform 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease;
 }
 
-.plugin-card:hover {
-  transform: translateY(-1px);
-  border-color: var(--primary-color, #4f7bff);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-}
-
-.plugin-card-head {
+.plugin-head {
   width: 100%;
-  padding: 16px 18px;
+  padding: 12px 14px;
   border: 0;
   background: transparent;
   display: flex;
@@ -613,16 +488,27 @@ onMounted(() => {
   text-align: left;
 }
 
-.plugin-main,
-.detail-title-wrap {
-  gap: 14px;
+.plugin-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
 }
 
+.expand-icon {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.expand-icon.expanded {
+  transform: rotate(90deg);
+}
+
 .plugin-logo {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   object-fit: cover;
   flex-shrink: 0;
 }
@@ -631,96 +517,93 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #0f172a, #334155);
-  color: #fff;
-  font-size: 18px;
-  font-weight: 700;
+  background: var(--hover-bg);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .plugin-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
-}
-
-.plugin-name-row {
-  gap: 10px;
-  justify-content: flex-start;
 }
 
 .plugin-name {
   color: var(--text-color);
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 500;
 }
 
-.plugin-tool-count {
+.plugin-meta {
   color: var(--text-secondary);
   font-size: 12px;
 }
 
-.plugin-hint {
-  margin-top: 4px;
-  font-size: 12px;
+.plugin-tools {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
 }
 
-.plugin-toggle {
-  flex-shrink: 0;
+.plugin-tools.open {
+  grid-template-rows: 1fr;
 }
 
-.detail-title-wrap {
+.plugin-tools-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.plugin-tools.open .plugin-tools-inner {
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--divider-color);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-item {
+  padding: 10px 12px;
+  background: var(--hover-bg);
+  border-radius: 6px;
+}
+
+.tool-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tool-names {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   min-width: 0;
 }
 
-.accordion-arrow {
-  width: 20px;
-  color: var(--text-secondary);
-  font-size: 18px;
-  font-weight: 400;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.tool-card {
-  padding: 16px 18px;
-  background: var(--hover-bg);
-}
-
-.accordion-body {
-  display: block;
-  padding: 0 18px 18px;
-  border-top: 1px solid var(--divider-color);
-}
-
-.tool-head {
-  gap: 10px;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.tool-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+.tool-mcp-name,
+.tool-original-name {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+  font-size: 12px;
 }
 
 .tool-mcp-name {
   color: var(--text-color);
-  font-size: 12px;
 }
 
-.tool-name {
+.tool-original-name {
   color: var(--text-secondary);
-  font-size: 12px;
 }
 
 .tool-desc {
-  margin-top: 8px;
+  margin: 6px 0 0;
   font-size: 13px;
-  line-height: 1.6;
-}
-
-.tool-detail-button {
-  flex-shrink: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 
 .tool-detail-content {
@@ -729,24 +612,19 @@ onMounted(() => {
 
 .tool-detail-card {
   border: 1px solid var(--divider-color);
-  border-radius: 16px;
-  background: var(--bg-color);
+  border-radius: 8px;
+  background: var(--card-bg);
   overflow: hidden;
 }
 
 .tool-detail-header {
-  padding: 16px 18px;
+  padding: 14px;
   border-bottom: 1px solid var(--divider-color);
-  background: var(--card-bg);
-}
-
-.tool-detail-desc {
-  margin-top: 8px;
 }
 
 .tool-json {
   margin: 0;
-  padding: 18px;
+  padding: 14px;
   font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
   font-size: 12px;
   line-height: 1.7;
@@ -756,36 +634,11 @@ onMounted(() => {
 }
 
 .empty-state {
-  margin-top: 18px;
-  padding: 24px;
-  border-radius: 16px;
+  padding: 20px;
+  border-radius: 8px;
   background: var(--hover-bg);
   color: var(--text-secondary);
   text-align: center;
-}
-
-@media (max-width: 720px) {
-  .content-panel {
-  }
-
-  .scrollable-content {
-    padding: 16px;
-  }
-
-  .service-copy,
-  .service-foot,
-  .plugin-card {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .service-actions,
-  .plugin-toggle {
-    margin-top: 14px;
-  }
-
-  .service-foot {
-    gap: 10px;
-  }
+  font-size: 13px;
 }
 </style>
