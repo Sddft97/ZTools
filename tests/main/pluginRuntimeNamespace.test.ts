@@ -1,57 +1,62 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DEVELOPMENT_RUNTIME_NAMESPACE_SUFFIX,
-  buildPluginDataVariantRecord,
-  getDetachedWindowSizeKey,
+  DEV_PLUGIN_SUFFIX,
+  isDevelopmentPluginName,
+  toDevPluginName,
+  fromDevPluginName,
   getPluginDataPrefix,
   getPluginDocId,
-  getPluginRuntimeNamespace,
   getPluginSessionPartition,
   getPluginZBrowserPartition,
-  parsePluginRuntimeNamespace
+  getDetachedWindowSizeKey
 } from '../../src/shared/pluginRuntimeNamespace'
 
 describe('pluginRuntimeNamespace', () => {
-  it('keeps installed plugins on the original namespace', () => {
-    expect(getPluginRuntimeNamespace('demo', 'installed')).toBe('demo')
-    expect(getPluginDataPrefix('demo', 'installed')).toBe('PLUGIN/demo/')
-    expect(getPluginDocId('demo', 'installed', 'settings')).toBe('PLUGIN/demo/settings')
+  it('DEV_PLUGIN_SUFFIX is __dev', () => {
+    expect(DEV_PLUGIN_SUFFIX).toBe('__dev')
   })
 
-  it('adds the dev suffix for development plugins', () => {
-    expect(getPluginRuntimeNamespace('demo', 'development')).toBe(
-      `demo${DEVELOPMENT_RUNTIME_NAMESPACE_SUFFIX}`
-    )
-    expect(getPluginSessionPartition('demo', 'development')).toBe('persist:demo__dev')
-    expect(getPluginZBrowserPartition('demo', 'development')).toBe('demo__dev.zbrowser')
-    expect(getDetachedWindowSizeKey('demo', 'development')).toBe('demo__dev')
+  it('isDevelopmentPluginName correctly identifies dev plugins', () => {
+    expect(isDevelopmentPluginName('demo__dev')).toBe(true)
+    expect(isDevelopmentPluginName('demo')).toBe(false)
+    expect(isDevelopmentPluginName('demo__development')).toBe(false)
+    expect(isDevelopmentPluginName('__dev')).toBe(true) // ends with __dev suffix
   })
 
-  it('parses runtime namespaces back to plugin variants', () => {
-    expect(parsePluginRuntimeNamespace('demo')).toEqual({
-      pluginName: 'demo',
-      pluginSource: 'installed'
-    })
-    expect(parsePluginRuntimeNamespace('demo__dev')).toEqual({
-      pluginName: 'demo',
-      pluginSource: 'development'
-    })
+  it('toDevPluginName adds __dev suffix', () => {
+    expect(toDevPluginName('demo')).toBe('demo__dev')
+    expect(toDevPluginName('my-plugin')).toBe('my-plugin__dev')
+    // not idempotent: always appends suffix
+    expect(toDevPluginName('demo__dev')).toBe('demo__dev__dev')
   })
 
-  it('marks development data records for the setting data page', () => {
-    expect(
-      buildPluginDataVariantRecord({
-        pluginName: 'demo',
-        pluginTitle: 'Demo',
-        pluginSource: 'development',
-        docCount: 2,
-        attachmentCount: 1,
-        logo: null
-      })
-    ).toMatchObject({
-      pluginName: 'demo',
-      pluginSource: 'development',
-      isDevelopment: true
-    })
+  it('fromDevPluginName removes __dev suffix', () => {
+    expect(fromDevPluginName('demo__dev')).toBe('demo')
+    expect(fromDevPluginName('demo')).toBe('demo')
+  })
+
+  it('getPluginDataPrefix returns correct LMDB prefix', () => {
+    expect(getPluginDataPrefix('demo')).toBe('PLUGIN/demo/')
+    expect(getPluginDataPrefix('demo__dev')).toBe('PLUGIN/demo__dev/')
+  })
+
+  it('getPluginDocId returns correct doc ID', () => {
+    expect(getPluginDocId('demo', 'settings')).toBe('PLUGIN/demo/settings')
+    expect(getPluginDocId('demo__dev', 'settings')).toBe('PLUGIN/demo__dev/settings')
+  })
+
+  it('getPluginSessionPartition uses pluginName directly', () => {
+    expect(getPluginSessionPartition('demo')).toBe('persist:demo')
+    expect(getPluginSessionPartition('demo__dev')).toBe('persist:demo__dev')
+  })
+
+  it('getPluginZBrowserPartition uses pluginName directly', () => {
+    expect(getPluginZBrowserPartition('demo')).toBe('demo.zbrowser')
+    expect(getPluginZBrowserPartition('demo__dev')).toBe('demo__dev.zbrowser')
+  })
+
+  it('getDetachedWindowSizeKey returns pluginName directly', () => {
+    expect(getDetachedWindowSizeKey('demo')).toBe('demo')
+    expect(getDetachedWindowSizeKey('demo__dev')).toBe('demo__dev')
   })
 })

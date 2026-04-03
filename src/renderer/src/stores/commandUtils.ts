@@ -13,7 +13,6 @@ interface MatchInfo {
 
 interface CommandLike extends CommandIdLike {
   path: string
-  pluginSource?: 'installed' | 'development'
   subType?: string
   [key: string]: any
 }

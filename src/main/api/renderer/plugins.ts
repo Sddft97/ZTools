@@ -40,15 +40,7 @@ import {
   type DevPluginRegistryDoc,
   type DevProjectLocalBinding
 } from './pluginDevelopmentRegistry'
-import {
-  getPluginSource,
-  isSamePluginVariantRef,
-  normalizePluginVariantRef,
-  removePluginVariantRef,
-  type PluginVariantRef,
-  type PluginSource
-} from '../../../shared/pluginVariantRef'
-import { getPluginDataPrefix } from '../../../shared/pluginRuntimeNamespace'
+import { getPluginDataPrefix, toDevPluginName } from '../../../shared/pluginRuntimeNamespace'
 
 // 插件目录
 const PLUGIN_DIR = path.join(app.getPath('userData'), 'plugins')
@@ -213,8 +205,8 @@ export class PluginsAPI {
     ipcMain.handle('get-plugin-readme', (_event, pluginPathOrName: string, pluginName?: string) =>
       this.getPluginReadme(pluginPathOrName, pluginName)
     )
-    ipcMain.handle('get-plugin-db-data', (_event, pluginRef: PluginVariantRef | string) =>
-      this.getPluginDbData(pluginRef)
+    ipcMain.handle('get-plugin-db-data', (_event, pluginName: string) =>
+      this.getPluginDbData(pluginName)
     )
     ipcMain.handle('read-plugin-info-from-zpx', (_event, zpxPath: string) =>
       this.readPluginInfoFromZpx(zpxPath)
@@ -380,10 +372,7 @@ export class PluginsAPI {
       // 合并动态 features 和网页快开搜索引擎
       const webSearchFeatures = await webSearchAPI.getSearchEngineFeatures()
       for (const plugin of plugins) {
-        const dynamicFeatures = pluginFeatureAPI.loadDynamicFeatures(
-          plugin.name,
-          getPluginSource(plugin.isDevelopment)
-        )
+        const dynamicFeatures = pluginFeatureAPI.loadDynamicFeatures(plugin.name)
         plugin.features = [...(plugin.features || []), ...dynamicFeatures]
 
         // 将网页快开搜索引擎作为系统插件的动态 features
@@ -741,68 +730,35 @@ export class PluginsAPI {
   /**
    * 删除开发版插件变体时，同时清理与该变体关联的历史、固定、自启动等持久化数据。
    */
-  private removePluginUsageData(pluginName: string, pluginSource: PluginSource): void {
-    const history: { pluginName: string }[] = databaseAPI.dbGet('command-history') || []
-    const newHistory = history.filter(
-      (item: any) =>
-        !isSamePluginVariantRef(
-          {
-            pluginName: item?.pluginName,
-            source: item?.pluginSource
-          },
-          {
-            pluginName,
-            source: pluginSource
-          }
-        )
-    )
+  private removePluginUsageData(effectiveName: string): void {
+    const history: any[] = databaseAPI.dbGet('command-history') || []
+    const newHistory = history.filter((item: any) => item?.pluginName !== effectiveName)
     if (newHistory.length !== history.length) {
       databaseAPI.dbPut('command-history', newHistory)
       this.mainWindow?.webContents.send('history-changed')
     }
 
-    const pinned: { pluginName: string }[] = databaseAPI.dbGet('pinned-commands') || []
-    const newPinned = pinned.filter(
-      (item: any) =>
-        !isSamePluginVariantRef(
-          {
-            pluginName: item?.pluginName,
-            source: item?.pluginSource
-          },
-          {
-            pluginName,
-            source: pluginSource
-          }
-        )
-    )
+    const pinned: any[] = databaseAPI.dbGet('pinned-commands') || []
+    const newPinned = pinned.filter((item: any) => item?.pluginName !== effectiveName)
     if (newPinned.length !== pinned.length) {
       databaseAPI.dbPut('pinned-commands', newPinned)
       this.mainWindow?.webContents.send('pinned-changed')
     }
 
-    const autoStartPlugins = databaseAPI.dbGet('autoStartPlugin') || []
-    const nextAutoStartPlugins = removePluginVariantRef(autoStartPlugins, {
-      pluginName,
-      source: pluginSource
-    })
+    const autoStartPlugins: string[] = databaseAPI.dbGet('autoStartPlugin') || []
+    const nextAutoStartPlugins = autoStartPlugins.filter((n) => n !== effectiveName)
     if (nextAutoStartPlugins.length !== autoStartPlugins.length) {
       databaseAPI.dbPut('autoStartPlugin', nextAutoStartPlugins)
     }
 
-    const outKillPlugins = databaseAPI.dbGet('outKillPlugin') || []
-    const nextOutKillPlugins = removePluginVariantRef(outKillPlugins, {
-      pluginName,
-      source: pluginSource
-    })
+    const outKillPlugins: string[] = databaseAPI.dbGet('outKillPlugin') || []
+    const nextOutKillPlugins = outKillPlugins.filter((n) => n !== effectiveName)
     if (nextOutKillPlugins.length !== outKillPlugins.length) {
       databaseAPI.dbPut('outKillPlugin', nextOutKillPlugins)
     }
 
-    const autoDetachPlugins = databaseAPI.dbGet('autoDetachPlugin') || []
-    const nextAutoDetachPlugins = removePluginVariantRef(autoDetachPlugins, {
-      pluginName,
-      source: pluginSource
-    })
+    const autoDetachPlugins: string[] = databaseAPI.dbGet('autoDetachPlugin') || []
+    const nextAutoDetachPlugins = autoDetachPlugins.filter((n) => n !== effectiveName)
     if (nextAutoDetachPlugins.length !== autoDetachPlugins.length) {
       databaseAPI.dbPut('autoDetachPlugin', nextAutoDetachPlugins)
     }
@@ -828,7 +784,8 @@ export class PluginsAPI {
       for (const [name, project] of orderedProjects) {
         const localBinding = localBindings.bindings[name]
         const localPath = localBinding?.projectPath ? path.resolve(localBinding.projectPath) : null
-        const installedDevPlugin = devInstalledByName.get(name)
+        const installedDevPlugin =
+          devInstalledByName.get(toDevPluginName(name)) || devInstalledByName.get(name)
         const installedPath =
           typeof installedDevPlugin?.path === 'string'
             ? path.resolve(installedDevPlugin.path)
@@ -1389,9 +1346,12 @@ export class PluginsAPI {
       }
 
       const existingPlugins = this.readInstalledPlugins()
+      const devNameForValidation = toDevPluginName(pluginConfig.name)
       const validation = this.validatePluginConfig(
         pluginConfig,
-        existingPlugins.filter((plugin) => plugin?.name !== pluginConfig.name)
+        existingPlugins.filter(
+          (p) => p?.name !== pluginConfig.name && p?.name !== devNameForValidation
+        )
       )
       if (!validation.valid) {
         return { success: false, error: validation.error }
@@ -1472,9 +1432,12 @@ export class PluginsAPI {
       }
 
       const existingPlugins = this.readInstalledPlugins()
+      const devNameForValidation = toDevPluginName(pluginConfig.name)
       const validation = this.validatePluginConfig(
         pluginConfig,
-        existingPlugins.filter((plugin) => plugin?.name !== pluginConfig.name)
+        existingPlugins.filter(
+          (p) => p?.name !== pluginConfig.name && p?.name !== devNameForValidation
+        )
       )
       if (!validation.valid) {
         return { success: false, error: validation.error }
@@ -1543,15 +1506,9 @@ export class PluginsAPI {
       plugins.splice(pluginIndex, 1)
       databaseAPI.dbPut('plugins', plugins)
 
-      this.removePluginUsageData(
-        pluginInfo.name,
-        pluginInfo.isDevelopment ? 'development' : 'installed'
-      )
+      this.removePluginUsageData(pluginInfo.name)
 
-      await databaseAPI.clearPluginData({
-        pluginName: pluginInfo.name,
-        source: getPluginSource(pluginInfo.isDevelopment)
-      })
+      await databaseAPI.clearPluginData(pluginInfo.name)
 
       // 删除禁用插件标识
       const disabledPlugins = this.getDisabledPluginSet()
@@ -1726,7 +1683,7 @@ export class PluginsAPI {
           bindings: nextBindings
         }
       )
-      this.removePluginUsageData(normalizedProjectName, 'development')
+      this.removePluginUsageData(toDevPluginName(normalizedProjectName))
       this.notifyPluginsChanged()
       console.log('[Plugins] 开发项目删除完成:', normalizedProjectName)
       return { success: true, pluginName: normalizedProjectName }
@@ -1767,9 +1724,10 @@ export class PluginsAPI {
       }
 
       const plugins = this.readInstalledPlugins()
+      const devEffectiveName = toDevPluginName(projectName)
       const validation = this.validatePluginConfig(
         pluginConfig,
-        plugins.filter((plugin) => plugin?.name !== projectName)
+        plugins.filter((p) => p?.name !== projectName && p?.name !== devEffectiveName)
       )
       if (!validation.valid) {
         return { success: false, error: validation.error }
@@ -1778,8 +1736,9 @@ export class PluginsAPI {
       const projectPath = path.resolve(validated.binding.projectPath)
       const installedPlugin = buildInstalledDevelopmentPlugin(projectPath, pluginConfig)
       installedPlugin.logo = this.resolvePluginLogo(projectPath, pluginConfig.logo)
+      const effectiveDevName = installedPlugin.name // buildInstalledDevelopmentPlugin 已含 __dev
       const existingIndex = plugins.findIndex(
-        (plugin) => plugin?.isDevelopment && plugin?.name === projectName
+        (plugin) => plugin?.isDevelopment && plugin?.name === effectiveDevName
       )
       if (existingIndex >= 0) {
         plugins[existingIndex] = installedPlugin
@@ -1819,8 +1778,9 @@ export class PluginsAPI {
         return { success: true }
       }
 
+      const devEffectiveName = toDevPluginName(projectName)
       const pluginInfo = plugins.find(
-        (plugin) => plugin?.isDevelopment && plugin?.name === projectName
+        (plugin) => plugin?.isDevelopment && plugin?.name === devEffectiveName
       )
       if (!pluginInfo?.isDevelopment) {
         return { success: true }
@@ -1830,9 +1790,9 @@ export class PluginsAPI {
         this.pluginManager?.killPlugin(pluginInfo.path)
       }
       this.writeInstalledPlugins(
-        plugins.filter((plugin) => !(plugin?.isDevelopment && plugin?.name === projectName))
+        plugins.filter((plugin) => !(plugin?.isDevelopment && plugin?.name === devEffectiveName))
       )
-      this.removePluginUsageData(projectName, 'development')
+      this.removePluginUsageData(toDevPluginName(projectName))
       this.notifyPluginsChanged()
       console.log('[Plugins] 开发模式卸载完成:', projectName)
       return { success: true, pluginName: projectName }
@@ -2691,13 +2651,13 @@ export class PluginsAPI {
   }
 
   // 获取插件存储的数据库数据
-  private getPluginDbData(pluginRef: PluginVariantRef | string): {
+  private getPluginDbData(pluginName: string): {
     success: boolean
     data?: any
     error?: string
   } {
     try {
-      if (pluginRef === 'ZTOOLS') {
+      if (pluginName === 'ZTOOLS') {
         const allData = lmdbInstance.allDocs('ZTOOLS/')
         return {
           success: true,
@@ -2710,21 +2670,19 @@ export class PluginsAPI {
         }
       }
 
-      const normalizedRef = normalizePluginVariantRef(pluginRef)
-      if (!normalizedRef) {
+      if (!pluginName) {
         return { success: false, error: '插件标识无效' }
       }
 
-      const prefix = getPluginDataPrefix(normalizedRef.pluginName, normalizedRef.source)
+      const prefix = getPluginDataPrefix(pluginName)
       const allData = lmdbInstance.allDocs(prefix)
 
       if (!allData || allData.length === 0) {
         return { success: true, data: [] }
       }
 
-      // 过滤并格式化数据
       const formattedData = allData.map((item: any) => ({
-        id: item._id.substring(prefix.length), // 去除前缀
+        id: item._id.substring(prefix.length),
         data: item.data,
         rev: item._rev,
         updatedAt: item.updatedAt || item._updatedAt

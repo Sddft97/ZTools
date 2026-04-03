@@ -45,20 +45,18 @@ export class ZBrowserAPI {
         if (!pluginInfo) throw new Error('plugin not found')
 
         const executor = new ZBrowserExecutor()
-        console.log('[zbrowser] 解析运行时命名空间:', {
+        console.log('[zbrowser] 插件名:', {
           pluginName: pluginInfo.name,
-          pluginSource: pluginInfo.pluginSource,
-          runtimeNamespace: pluginInfo.runtimeNamespace,
           pluginPath: pluginInfo.path
         })
         return await executor.run({
           pluginName: pluginInfo.name,
-          runtimeNamespace: pluginInfo.runtimeNamespace,
+          runtimeNamespace: pluginInfo.name,
           pluginLogo: pluginInfo.logo || '',
           ubrowserId,
           options: (options || {}) as any,
           queue: queue as any[],
-          idleWindowIds: zbrowserManager.getIdleWindowIds(pluginInfo.runtimeNamespace)
+          idleWindowIds: zbrowserManager.getIdleWindowIds(pluginInfo.name)
         })
       },
 
@@ -73,7 +71,7 @@ export class ZBrowserAPI {
           event.returnValue = []
           return
         }
-        event.returnValue = zbrowserManager.getIdleWindows(pluginInfo.runtimeNamespace)
+        event.returnValue = zbrowserManager.getIdleWindows(pluginInfo.name)
       },
 
       /**
@@ -86,7 +84,7 @@ export class ZBrowserAPI {
       setZBrowserProxy: async (event: Electron.IpcMainInvokeEvent, config: unknown) => {
         const pluginInfo = pluginManager.getPluginInfoByWebContents(event.sender)
         if (!pluginInfo) return false
-        await zbrowserManager.setProxy(pluginInfo.runtimeNamespace, config as Electron.ProxyConfig)
+        await zbrowserManager.setProxy(pluginInfo.name, config as Electron.ProxyConfig)
         return true
       },
 
@@ -98,7 +96,7 @@ export class ZBrowserAPI {
       clearZBrowserCache: async (event: Electron.IpcMainInvokeEvent) => {
         const pluginInfo = pluginManager.getPluginInfoByWebContents(event.sender)
         if (!pluginInfo) return false
-        await zbrowserManager.clearCache(pluginInfo.runtimeNamespace)
+        await zbrowserManager.clearCache(pluginInfo.name)
         return true
       },
 

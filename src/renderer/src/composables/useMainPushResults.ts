@@ -21,8 +21,6 @@ export interface MainPushGroup {
   pluginPath: string
   /** 提供该结果分组的插件名称。 */
   pluginName: string
-  /** 插件来源，用于区分安装版和开发版。 */
-  pluginSource?: 'installed' | 'development'
   /** 插件 Logo。 */
   pluginLogo: string
   /** 产生命中的功能编码。 */
@@ -129,7 +127,6 @@ export function useMainPushResults(props: UseMainPushResultsProps): {
         featureKey: `${r.feature.pluginPath}:${r.feature.featureCode}`,
         pluginPath: r.feature.pluginPath,
         pluginName: r.feature.pluginName,
-        pluginSource: r.feature.pluginSource,
         pluginLogo: r.feature.pluginLogo,
         featureCode: r.feature.featureCode,
         featureExplain: r.feature.featureExplain,

@@ -55,6 +55,7 @@ describe('database plugin isolation', () => {
   })
 
   it('separates installed and development data stats for the same plugin name', async () => {
+    // 新系统：dev 插件 name 已含 __dev 后缀，是独立条目
     mockLmdb.allDocs.mockImplementation((prefix: string) => {
       if (prefix === 'PLUGIN/') {
         return [{ _id: 'PLUGIN/demo/settings' }, { _id: 'PLUGIN/demo__dev/settings' }]
@@ -86,7 +87,7 @@ describe('database plugin isolation', () => {
               logo: 'installed.png'
             },
             {
-              name: 'demo',
+              name: 'demo__dev',
               title: 'Demo Dev',
               isDevelopment: true,
               logo: 'dev.png'
@@ -100,28 +101,28 @@ describe('database plugin isolation', () => {
     const database = new DatabaseAPI()
     const result = await database.getPluginDataStats()
 
-    expect(result).toEqual({
-      success: true,
-      data: [
-        {
-          pluginName: 'demo',
-          pluginTitle: 'Demo Installed',
-          pluginSource: 'installed',
-          isDevelopment: false,
-          docCount: 1,
-          attachmentCount: 1,
-          logo: 'installed.png'
-        },
-        {
-          pluginName: 'demo',
-          pluginTitle: 'Demo Dev',
-          pluginSource: 'development',
-          isDevelopment: true,
-          docCount: 1,
-          attachmentCount: 1,
-          logo: 'dev.png'
-        }
-      ]
+    expect(result.success).toBe(true)
+    expect(result.data).toHaveLength(2)
+
+    const installed = result.data!.find((d) => d.pluginName === 'demo')
+    const dev = result.data!.find((d) => d.pluginName === 'demo__dev')
+
+    expect(installed).toMatchObject({
+      pluginName: 'demo',
+      pluginTitle: 'Demo Installed',
+      isDevelopment: false,
+      docCount: 1,
+      attachmentCount: 1,
+      logo: 'installed.png'
+    })
+
+    expect(dev).toMatchObject({
+      pluginName: 'demo__dev',
+      pluginTitle: 'Demo Dev',
+      isDevelopment: true,
+      docCount: 1,
+      attachmentCount: 1,
+      logo: 'dev.png'
     })
   })
 
@@ -141,10 +142,8 @@ describe('database plugin isolation', () => {
     })
 
     const database = new DatabaseAPI()
-    const result = await database.getPluginDocKeys({
-      pluginName: 'demo',
-      source: 'development'
-    } as any)
+    // 新 API：直接传字符串 pluginName（含 __dev 后缀）
+    const result = await database.getPluginDocKeys('demo__dev')
 
     expect(mockLmdb.allDocs).toHaveBeenCalledWith('PLUGIN/demo__dev/')
     expect(result).toEqual({
@@ -182,10 +181,8 @@ describe('database plugin isolation', () => {
     })
 
     const database = new DatabaseAPI()
-    const result = await database.clearPluginData({
-      pluginName: 'demo',
-      source: 'development'
-    } as any)
+    // 新 API：直接传字符串 pluginName（含 __dev 后缀）
+    const result = await database.clearPluginData('demo__dev')
 
     expect(mockLmdb.allDocs).toHaveBeenCalledWith('PLUGIN/demo__dev/')
     expect(mockLmdb.remove).toHaveBeenCalledWith('PLUGIN/demo__dev/settings')

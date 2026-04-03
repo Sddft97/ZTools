@@ -85,7 +85,7 @@
         :key="group.featureKey"
         :title="group.featureExplain || group.pluginName"
         :icon="group.featureIcon || group.pluginLogo"
-        :plugin-source="group.pluginSource"
+        :plugin-name="group.pluginName"
         :items="group.items"
         :selected-index="getMainPushSelectedIndex(group.featureKey)"
         :search-query="searchQuery"

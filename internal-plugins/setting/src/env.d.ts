@@ -16,14 +16,6 @@ interface Services {
   writeImageFile: (base64Url: string) => string | undefined
 }
 
-type PluginVariantRefInput =
-  | string
-  | {
-      pluginName: string
-      source: 'installed' | 'development'
-      path?: string
-    }
-
 declare global {
   interface Window {
     services: Services
@@ -152,13 +144,13 @@ declare global {
           content?: string
           error?: string
         }>
-        getPluginDocKeys: (pluginRef: PluginVariantRefInput) => Promise<{
+        getPluginDocKeys: (pluginName: string) => Promise<{
           success: boolean
           data?: Array<{ key: string; type: 'document' | 'attachment' }>
           error?: string
         }>
         getPluginDoc: (
-          pluginRef: PluginVariantRefInput,
+          pluginName: string,
           key: string
         ) => Promise<{
           success: boolean
@@ -171,7 +163,6 @@ declare global {
           data?: Array<{
             pluginName: string
             pluginTitle: string | null
-            pluginSource: 'installed' | 'development'
             isDevelopment: boolean
             docCount: number
             attachmentCount: number
@@ -179,12 +170,12 @@ declare global {
           }>
           error?: string
         }>
-        clearPluginData: (pluginRef: PluginVariantRefInput) => Promise<{
+        clearPluginData: (pluginName: string) => Promise<{
           success: boolean
           deletedCount?: number
           error?: string
         }>
-        exportPluginData: (pluginRef: PluginVariantRefInput) => Promise<{
+        exportPluginData: (pluginName: string) => Promise<{
           success: boolean
           folderPath?: string
           error?: string
@@ -457,13 +448,7 @@ declare global {
 
         // 固定/取消固定指令到搜索窗口
         pinApp: (app: any) => Promise<void>
-        // pluginSource 用于区分安装版与开发版同名插件
-        unpinApp: (
-          appPath: string,
-          featureCode?: string,
-          name?: string,
-          pluginSource?: 'installed' | 'development'
-        ) => Promise<void>
+        unpinApp: (appPath: string, featureCode?: string, name?: string) => Promise<void>
 
         // HTTP 服务
         httpServerGetConfig: () => Promise<{

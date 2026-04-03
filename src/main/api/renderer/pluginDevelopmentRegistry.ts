@@ -1,4 +1,5 @@
 import path from 'path'
+import { toDevPluginName } from '../../../shared/pluginRuntimeNamespace'
 
 /**
  * 兼容旧版“仅按路径记录开发项目”的存储键。
@@ -358,8 +359,11 @@ export function buildInstalledDevelopmentPlugin(
   pluginConfig: PluginConfigLite
 ): InstalledPluginLite {
   const normalizedPath = normalizeProjectPath(pluginPath)
+  const baseName = pluginConfig.name || path.basename(normalizedPath)
+  // 内置插件（setting、system）在开发模式下仅设 isDevelopment: true 而不加 __dev 后缀
+  const effectiveName = BUILT_IN_PLUGIN_NAMES.has(baseName) ? baseName : toDevPluginName(baseName)
   return {
-    name: pluginConfig.name || path.basename(normalizedPath),
+    name: effectiveName,
     title: pluginConfig.title,
     version: pluginConfig.version,
     description: pluginConfig.description || '',

@@ -1,4 +1,6 @@
 import databaseAPI from '../api/shared/database.js'
+import { isDevelopmentPluginName, toDevPluginName } from '../../shared/pluginRuntimeNamespace.js'
+import { isBundledInternalPlugin } from './internalPlugins.js'
 
 /**
  * 将单个旧版 macOS .icns 图标 URL 迁移为直接使用 .app 路径的 ztools-icon URL
@@ -53,6 +55,9 @@ function migrateLegacyMacAppIcons(items: any[]): boolean {
  * 当前仅处理旧版 macOS .icns 图标 URL 到 .app 路径图标 URL 的转换
  */
 export function runStartupDataMigrations(): void {
+  migrateDevPluginNames()
+  migrateVariantRefLists()
+
   if (process.platform !== 'darwin') return
 
   const migrationKeys = [
@@ -74,6 +79,98 @@ export function runStartupDataMigrations(): void {
       }
     } catch (error) {
       console.error(`[StartupMigration] 迁移失败: ${key}`, error)
+    }
+  }
+}
+
+/**
+ * 将历史记录和固定列表中旧式开发版插件记录迁移为新格式。
+ *
+ * 旧格式：{ pluginName: 'demo', pluginSource: 'development' }
+ * 新格式：{ pluginName: 'demo__dev' }  (移除 pluginSource 字段)
+ *
+ * 迁移策略：
+ * - 若 pluginSource === 'development'，将 pluginName 加上 __dev 后缀
+ * - 否则保持不变，仅移除 pluginSource 字段
+ */
+function migrateDevPluginNames(): void {
+  const targetKeys = ['command-history', 'pinned-commands', 'super-panel-pinned']
+
+  for (const key of targetKeys) {
+    try {
+      const data: any[] = databaseAPI.dbGet(key) || []
+      if (!Array.isArray(data)) continue
+
+      let changed = false
+      for (const item of data) {
+        if (item?.type !== 'plugin') continue
+
+        // 将旧式 { pluginName, pluginSource: 'development' } 迁移为 __dev 后缀
+        // 内置插件（setting、system）在开发模式下以 isDevelopment: true 存储但不加后缀，迁移时跳过
+        // 仅当 pluginName 尚未含 __dev 后缀时才追加，避免新格式数据被重复迁移
+        if (item.pluginSource === 'development' && typeof item.pluginName === 'string') {
+          if (
+            !isBundledInternalPlugin(item.pluginName) &&
+            !isDevelopmentPluginName(item.pluginName)
+          ) {
+            item.pluginName = toDevPluginName(item.pluginName)
+          }
+          changed = true
+        }
+        // 移除 pluginSource 字段（已不再需要）
+        if ('pluginSource' in item) {
+          delete item.pluginSource
+          changed = true
+        }
+      }
+
+      if (changed) {
+        databaseAPI.dbPut(key, data)
+        console.log(`[StartupMigration] 已迁移开发版插件名称: ${key}`)
+      }
+    } catch (error) {
+      console.error(`[StartupMigration] 开发版插件名称迁移失败: ${key}`, error)
+    }
+  }
+}
+
+/**
+ * 将 autoStartPlugin / outKillPlugin / autoDetachPlugin 中旧式对象格式迁移为新式字符串格式。
+ *
+ * 旧格式：[{ pluginName: 'demo', source: 'development' }, {pluginName: 'foo', source: 'installed'}, ...]
+ * 新格式：['demo__dev', 'foo', ...]
+ */
+function migrateVariantRefLists(): void {
+  const configKeys = ['autoStartPlugin', 'outKillPlugin', 'autoDetachPlugin']
+
+  for (const key of configKeys) {
+    try {
+      const data: any[] = databaseAPI.dbGet(key) || []
+      if (!Array.isArray(data)) continue
+
+      let changed = false
+      const migrated: string[] = data
+        .map((item) => {
+          if (typeof item === 'string') return item
+          if (item && typeof item === 'object' && typeof item.pluginName === 'string') {
+            changed = true
+            const isDev = item.source === 'development' || item.pluginSource === 'development'
+            // 内置插件不加 __dev 后缀
+            if (isDev && !isBundledInternalPlugin(item.pluginName)) {
+              return toDevPluginName(item.pluginName)
+            }
+            return item.pluginName
+          }
+          return null
+        })
+        .filter(Boolean) as string[]
+
+      if (changed || migrated.length !== data.length) {
+        databaseAPI.dbPut(key, migrated)
+        console.log(`[StartupMigration] 已迁移插件配置列表: ${key}`)
+      }
+    } catch (error) {
+      console.error(`[StartupMigration] 迁移插件配置列表失败: ${key}`, error)
     }
   }
 }

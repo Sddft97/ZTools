@@ -115,7 +115,7 @@ export class PluginHttpAPI {
       if (this.pluginManager) {
         const pluginInfo = this.pluginManager.getPluginInfoByWebContents(webContents)
         if (pluginInfo) {
-          return pluginInfo.runtimeNamespace
+          return pluginInfo.name
         }
       }
 

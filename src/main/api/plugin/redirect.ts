@@ -3,7 +3,6 @@ import type { PluginManager } from '../../managers/pluginManager'
 import windowManager from '../../managers/windowManager'
 import databaseAPI from '../shared/database'
 import { pluginFeatureAPI } from './feature'
-import { getPluginSource } from '../../../shared/pluginVariantRef'
 
 /**
  * 插件跳转API - 插件专用
@@ -108,10 +107,7 @@ export class PluginRedirectAPI {
 
       // 合并动态 features
       for (const plugin of plugins) {
-        const dynamicFeatures = pluginFeatureAPI.loadDynamicFeatures(
-          plugin.name,
-          getPluginSource(plugin.isDevelopment)
-        )
+        const dynamicFeatures = pluginFeatureAPI.loadDynamicFeatures(plugin.name)
         plugin.features = [...(plugin.features || []), ...dynamicFeatures]
       }
 

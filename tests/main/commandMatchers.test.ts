@@ -8,6 +8,7 @@ import {
 // ========== findCommandIndex ==========
 
 describe('findCommandIndex', () => {
+  // dev 插件的 pluginName 含 __dev 后缀，直接作为唯一标识
   const list = [
     { name: '原神', path: 'C:\\launcher.exe', type: 'app' },
     { name: '米哈游启动器', path: 'C:\\launcher.exe', type: 'app' },
@@ -17,21 +18,21 @@ describe('findCommandIndex', () => {
       path: '/plugins/translate',
       type: 'plugin',
       featureCode: 'translate',
-      pluginSource: 'installed'
+      pluginName: 'translate'
     },
     {
       name: '词典',
       path: '/plugins/translate',
       type: 'plugin',
       featureCode: 'dict',
-      pluginSource: 'installed'
+      pluginName: 'translate'
     },
     {
       name: '翻译',
       path: '/workspace/translate',
       type: 'plugin',
       featureCode: 'translate',
-      pluginSource: 'development'
+      pluginName: 'translate__dev'
     }
   ]
 
@@ -59,50 +60,24 @@ describe('findCommandIndex', () => {
 
   describe('插件类型', () => {
     it('应匹配 path + featureCode', () => {
-      const idx = findCommandIndex(
-        list,
-        '/plugins/translate',
-        'plugin',
-        'translate',
-        undefined,
-        'installed'
-      )
+      // 通过 path 匹配（无 pluginName 情况）
+      const idx = findCommandIndex(list, '/plugins/translate', 'plugin', 'translate')
       expect(idx).toBe(3)
     })
 
     it('应区分同路径不同 featureCode 的插件', () => {
-      const idx = findCommandIndex(
-        list,
-        '/plugins/translate',
-        'plugin',
-        'dict',
-        undefined,
-        'installed'
-      )
+      const idx = findCommandIndex(list, '/plugins/translate', 'plugin', 'dict')
       expect(idx).toBe(4)
     })
 
     it('featureCode 不匹配时应返回 -1', () => {
-      const idx = findCommandIndex(
-        list,
-        '/plugins/translate',
-        'plugin',
-        'nonexistent',
-        undefined,
-        'installed'
-      )
+      const idx = findCommandIndex(list, '/plugins/translate', 'plugin', 'nonexistent')
       expect(idx).toBe(-1)
     })
 
-    it('应按 pluginSource 区分安装版与开发版', () => {
-      const idx = findCommandIndex(
-        list,
-        '/workspace/translate',
-        'plugin',
-        'translate',
-        undefined,
-        'development'
-      )
+    it('应按 pluginName（含__dev后缀）区分安装版与开发版', () => {
+      // 通过 pluginName 匹配开发版
+      const idx = findCommandIndex(list, '/anywhere', 'plugin', 'translate', 'translate__dev')
       expect(idx).toBe(5)
     })
   })
@@ -167,53 +142,42 @@ describe('filterOutCommand', () => {
           path: '/plugins/translate',
           type: 'plugin',
           featureCode: 'translate',
-          pluginSource: 'installed'
+          pluginName: 'translate'
         },
         {
           name: '词典',
           path: '/plugins/translate',
           type: 'plugin',
           featureCode: 'dict',
-          pluginSource: 'installed'
+          pluginName: 'translate'
         }
       ]
-      const result = filterOutCommand(
-        list,
-        '/plugins/translate',
-        'translate',
-        undefined,
-        'installed'
-      )
+      const result = filterOutCommand(list, '/plugins/translate', 'translate')
       expect(result).toHaveLength(1)
       expect(result[0].featureCode).toBe('dict')
     })
 
-    it('应在 pluginSource 不匹配时保留另一变体', () => {
+    it('应按 pluginName(__dev 后缀) 区分安装版与开发版，仅删除对应变体', () => {
       const list = [
         {
           name: '优秀待办',
           path: '/Applications/ExcellentTodo',
           type: 'plugin',
           featureCode: 'open',
-          pluginSource: 'installed'
+          pluginName: 'excellent-todo'
         },
         {
           name: '优秀待办',
           path: '/workspace/excellent-todo',
           type: 'plugin',
           featureCode: 'open',
-          pluginSource: 'development'
+          pluginName: 'excellent-todo__dev'
         }
       ]
-      const result = filterOutCommand(
-        list,
-        '/workspace/excellent-todo',
-        'open',
-        undefined,
-        'development'
-      )
+      // 通过 pluginName 删除开发版
+      const result = filterOutCommand(list, '/anywhere', 'open', 'excellent-todo__dev')
       expect(result).toHaveLength(1)
-      expect(result[0].pluginSource).toBe('installed')
+      expect(result[0].pluginName).toBe('excellent-todo')
     })
   })
 })
@@ -229,14 +193,14 @@ describe('hasCommand', () => {
       path: '/plugins/translate',
       type: 'plugin',
       featureCode: 'translate',
-      pluginSource: 'installed'
+      pluginName: 'translate'
     },
     {
       name: '翻译',
       path: '/workspace/translate',
       type: 'plugin',
       featureCode: 'translate',
-      pluginSource: 'development'
+      pluginName: 'translate__dev'
     }
   ]
 
@@ -250,19 +214,17 @@ describe('hasCommand', () => {
   })
 
   it('应找到匹配 path + featureCode 的插件项', () => {
-    expect(hasCommand(list, '/plugins/translate', 'translate', undefined, 'installed')).toBe(true)
-    expect(hasCommand(list, '/plugins/translate', 'nonexistent', undefined, 'installed')).toBe(
-      false
-    )
+    expect(hasCommand(list, '/plugins/translate', 'translate')).toBe(true)
+    expect(hasCommand(list, '/plugins/translate', 'nonexistent')).toBe(false)
   })
 
-  it('应按 pluginSource 区分不同插件变体', () => {
-    expect(hasCommand(list, '/workspace/translate', 'translate', undefined, 'development')).toBe(
-      true
-    )
-    expect(hasCommand(list, '/workspace/translate', 'translate', undefined, 'installed')).toBe(
-      false
-    )
+  it('应按 pluginName(__dev 后缀) 区分安装版与开发版', () => {
+    // 开发版通过 pluginName 匹配
+    expect(hasCommand(list, '/anywhere', 'translate', 'translate__dev')).toBe(true)
+    // 安装版 pluginName 不含 __dev
+    expect(hasCommand(list, '/anywhere', 'translate', 'translate')).toBe(true)
+    // 不存在的变体
+    expect(hasCommand(list, '/anywhere', 'translate', 'nonexistent__dev')).toBe(false)
   })
 
   describe('旧数据兼容（name 缺失）', () => {
@@ -287,39 +249,29 @@ describe('plugin variant matching', () => {
       path: '/Applications/ExcellentTodo',
       type: 'plugin',
       pluginName: 'excellent-todo',
-      pluginSource: 'installed',
       featureCode: 'open'
     },
     {
       name: '优秀待办',
       path: '/workspace/excellent-todo',
       type: 'plugin',
-      pluginName: 'excellent-todo',
-      pluginSource: 'development',
+      pluginName: 'excellent-todo__dev',
       featureCode: 'open'
     }
   ]
 
-  it('matches plugin commands by path + featureCode + pluginSource', () => {
-    const index = findCommandIndex(
-      list,
-      '/workspace/excellent-todo',
-      'plugin',
-      'open',
-      '优秀待办',
-      'development'
-    )
+  it('matches plugin commands by pluginName(_dev suffix)', () => {
+    // 通过 pluginName 匹配开发版
+    const index = findCommandIndex(list, '/anywhere', 'plugin', 'open', 'excellent-todo__dev')
     expect(index).toBe(1)
   })
 
-  it('keeps old records readable when pluginSource is missing', () => {
+  it('keeps old records readable when pluginName is missing', () => {
     expect(
       hasCommand(
         [{ path: '/Applications/ExcellentTodo', type: 'plugin', featureCode: 'open' }],
         '/Applications/ExcellentTodo',
-        'open',
-        '优秀待办',
-        'installed'
+        'open'
       )
     ).toBe(true)
   })
@@ -331,15 +283,13 @@ describe('plugin variant matching', () => {
           {
             path: '/old/workspace/excellent-todo',
             type: 'plugin',
-            pluginName: 'excellent-todo',
-            pluginSource: 'development',
+            pluginName: 'excellent-todo__dev',
             featureCode: 'open'
           }
         ],
         '/new/workspace/excellent-todo',
         'open',
-        'excellent-todo',
-        'development'
+        'excellent-todo__dev'
       )
     ).toBe(true)
   })

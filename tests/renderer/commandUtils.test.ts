@@ -13,16 +13,15 @@ describe('getCommandId', () => {
       name: '翻译',
       path: '/plugins/translate',
       pluginName: 'translate-plugin',
-      pluginSource: 'installed' as const,
       featureCode: 'translate',
       cmdType: 'regex' as const
     }
-    expect(getCommandId(cmd)).toBe('translate-plugin:installed:translate:翻译:regex')
+    expect(getCommandId(cmd)).toBe('translate-plugin:translate:翻译:regex')
   })
 
   it('缺省字段应使用空字符串和默认 cmdType', () => {
     const cmd = { name: 'App', path: 'C:\\app.exe' }
-    expect(getCommandId(cmd)).toBe(':::App:text')
+    expect(getCommandId(cmd)).toBe('::App:text')
   })
 
   it('cmdType 为 undefined 时应默认为 text', () => {
@@ -30,10 +29,9 @@ describe('getCommandId', () => {
       name: '功能',
       path: '/plugin',
       pluginName: 'test',
-      pluginSource: 'installed' as const,
       featureCode: 'feat'
     }
-    expect(getCommandId(cmd)).toBe('test:installed:feat:功能:text')
+    expect(getCommandId(cmd)).toBe('test:feat:功能:text')
   })
 
   it('应正确处理 over 类型', () => {
@@ -41,26 +39,23 @@ describe('getCommandId', () => {
       name: '超级面板',
       path: '/plugin',
       pluginName: 'sp',
-      pluginSource: 'development' as const,
       featureCode: 'panel',
       cmdType: 'over' as const
     }
-    expect(getCommandId(cmd)).toBe('sp:development:panel:超级面板:over')
+    expect(getCommandId(cmd)).toBe('sp:panel:超级面板:over')
   })
 
-  it('应将安装版和开发版同名命令区分为不同 ID', () => {
+  it('应将安装版和开发版同名命令使用不同 pluginName 区分', () => {
     const installed = getCommandId({
       name: '优秀待办',
       path: '/Applications/ExcellentTodo',
       pluginName: 'excellent-todo',
-      pluginSource: 'installed',
       featureCode: 'open'
     })
     const development = getCommandId({
       name: '优秀待办',
       path: '/workspace/excellent-todo',
-      pluginName: 'excellent-todo',
-      pluginSource: 'development',
+      pluginName: 'excellent-todo__dev',
       featureCode: 'open'
     })
 

@@ -34,7 +34,11 @@
             <div v-else class="app-icon-placeholder">
               {{ app.name.charAt(0).toUpperCase() }}
             </div>
-            <span v-if="app.pluginSource === 'development'" class="app-dev-badge">DEV</span>
+            <span
+              v-if="app.pluginName && isDevelopmentPluginName(app.pluginName)"
+              class="app-dev-badge"
+              >DEV</span
+            >
           </div>
           <!-- eslint-disable-next-line vue/no-v-html -->
           <span class="app-name" v-html="getHighlightedName(app)"></span>
@@ -67,7 +71,11 @@
           <div v-else class="app-icon-placeholder">
             {{ app.name.charAt(0).toUpperCase() }}
           </div>
-          <span v-if="app.pluginSource === 'development'" class="app-dev-badge">DEV</span>
+          <span
+            v-if="app.pluginName && isDevelopmentPluginName(app.pluginName)"
+            class="app-dev-badge"
+            >DEV</span
+          >
         </div>
         <!-- eslint-disable-next-line vue/no-v-html -->
         <span class="app-name" v-html="getHighlightedName(app)"></span>
@@ -85,6 +93,8 @@ import Draggable from 'vuedraggable'
 import type { Command } from '../../stores/commandDataStore'
 import { highlightMatch } from '../../utils/highlight'
 import AdaptiveIcon from '../common/AdaptiveIcon.vue'
+
+import { isDevelopmentPluginName } from '../../../../shared/pluginRuntimeNamespace'
 
 const props = withDefaults(
   defineProps<{

@@ -2,7 +2,7 @@
   <div v-if="apps.length > 0" class="vertical-list">
     <div
       v-for="(app, index) in apps"
-      :key="app.name + '|' + app.path + (app.pluginSource || '') + (app.featureCode || '')"
+      :key="app.name + '|' + app.path + (app.featureCode || '')"
       class="list-item"
       :class="{ selected: index === selectedIndex }"
       @click="$emit('select', app)"
@@ -10,7 +10,11 @@
     >
       <div class="item-icon">
         <img v-if="app.icon" :src="app.icon" alt="" draggable="false" />
-        <span v-if="app.pluginSource === 'development'" class="item-dev-badge">DEV</span>
+        <span
+          v-if="app.pluginName && isDevelopmentPluginName(app.pluginName)"
+          class="item-dev-badge"
+          >DEV</span
+        >
       </div>
       <div class="item-content">
         <!-- eslint-disable-next-line vue/no-v-html -->
@@ -29,6 +33,7 @@
 <script setup lang="ts">
 import type { Command } from '../../stores/commandDataStore'
 import { highlightMatch } from '../../utils/highlight'
+import { isDevelopmentPluginName } from '../../../../shared/pluginRuntimeNamespace'
 
 interface Props {
   apps: Command[]

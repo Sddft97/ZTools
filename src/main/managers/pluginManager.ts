@@ -24,14 +24,8 @@ import {
 import devToolsShortcut, { getDevToolsMode } from '../utils/devToolsShortcut'
 import windowManager from './windowManager'
 import {
-  includesPluginVariantRef,
-  resolvePluginVariantRefFromPlugins,
-  type PluginSource
-} from '../../shared/pluginVariantRef'
-import {
   getDetachedWindowSizeKey,
   getPluginDataPrefix,
-  getPluginRuntimeNamespace,
   getPluginSessionPartition
 } from '../../shared/pluginRuntimeNamespace'
 
@@ -64,8 +58,6 @@ export function registerExternalLinkInterceptor(webContents: WebContents): void 
 interface PluginViewInfo {
   path: string
   name: string
-  pluginSource: PluginSource
-  runtimeNamespace: string
   view: WebContentsView
   height?: number
   subInputPlaceholder?: string
@@ -120,14 +112,10 @@ export class PluginManager {
       if (staticFeature?.mainHide === true) return true
 
       // 2. 检查数据库中的动态 features
-      const pluginName = pluginConfig.name
-      if (pluginName) {
-        const pluginSource: PluginSource = this.fetchPluginInfoFromDB(pluginPath)?.isDevelopment
-          ? 'development'
-          : 'installed'
-        const doc = lmdbInstance.get(
-          `${getPluginDataPrefix(pluginName, pluginSource)}dynamic-features`
-        )
+      const pluginInfoFromDB = this.fetchPluginInfoFromDB(pluginPath)
+      const effectiveName = pluginInfoFromDB?.name || pluginConfig.name
+      if (effectiveName) {
+        const doc = lmdbInstance.get(`${getPluginDataPrefix(effectiveName)}dynamic-features`)
         if (doc?.data) {
           const dynamicFeatures = JSON.parse(doc.data).features || []
           const dynamicFeature = dynamicFeatures.find((f: any) => f.code === featureCode)
@@ -202,21 +190,17 @@ export class PluginManager {
    */
   private async setupPluginSession(
     pluginName: string,
-    pluginSource: PluginSource,
     pluginPath: string
   ): Promise<Electron.Session> {
-    const runtimeNamespace = getPluginRuntimeNamespace(pluginName, pluginSource)
-    const partition = getPluginSessionPartition(pluginName, pluginSource)
-    console.log('[Plugin] 解析运行时命名空间:', {
+    const partition = getPluginSessionPartition(pluginName)
+    console.log('[Plugin] 设置插件 Session:', {
       pluginName,
-      pluginSource,
-      runtimeNamespace,
       pluginPath,
       partition
     })
     const sess = session.fromPartition(partition)
     sess.registerPreloadScript({ type: 'frame', filePath: mainPreload })
-    await proxyManager.applyProxyToSession(sess, `插件 ${pluginName} (${runtimeNamespace})`)
+    await proxyManager.applyProxyToSession(sess, `插件 ${pluginName}`)
     if (isBundledInternalPlugin(pluginName)) {
       registerIconProtocolForSession(sess)
     }
@@ -606,15 +590,14 @@ export class PluginManager {
       api.resizeWindow(WINDOW_INITIAL_HEIGHT + 1)
       const pluginConfig = this.readPluginConfig(pluginPath)
       const isDevelopment = !!pluginInfoFromDB?.isDevelopment
-      const pluginSource: PluginSource = isDevelopment ? 'development' : 'installed'
-      const runtimeNamespace = getPluginRuntimeNamespace(pluginConfig.name, pluginSource)
+      const effectiveName = pluginInfoFromDB?.name || pluginConfig.name
       const { pluginUrl } = this.resolvePluginUrl(pluginPath, pluginConfig, isDevelopment)
 
       const preloadPath = pluginConfig.preload
         ? path.join(pluginPath, pluginConfig.preload)
         : undefined
 
-      const sess = await this.setupPluginSession(pluginConfig.name, pluginSource, pluginPath)
+      const sess = await this.setupPluginSession(effectiveName, pluginPath)
       this.pluginView = this.createPluginWebContentsView(sess, preloadPath)
 
       // 注册主窗口专属的事件监听
@@ -631,9 +614,7 @@ export class PluginManager {
       const logoUrl = this.buildPluginLogoUrl(pluginPath, pluginConfig.logo)
       const pluginInfo: PluginViewInfo = {
         path: pluginPath,
-        name: pluginConfig.name,
-        pluginSource,
-        runtimeNamespace,
+        name: effectiveName,
         view: this.pluginView,
         subInputPlaceholder: '搜索',
         subInputVisible: false,
@@ -674,7 +655,7 @@ export class PluginManager {
 
         view.webContents.insertCSS(GLOBAL_SCROLLBAR_CSS)
         await this.processPluginMode(pluginPath, featureCode, view, assembly)
-        this.sendPluginLoadedEvent(pluginConfig.name, pluginPath)
+        this.sendPluginLoadedEvent(effectiveName, pluginPath)
         // 修复 Windows 首次进入插件时的白屏：新建视图同样需要触发重绘
         this.forceRepaintView(view)
         this.assemblyCoordinator.trace('create-new-view-dom-ready-finish', {
@@ -689,7 +670,7 @@ export class PluginManager {
         assemblyId: assembly?.id,
         pluginPath,
         featureCode,
-        runtimeNamespace
+        effectiveName
       })
     } catch (error) {
       console.error('[Plugin] 加载插件配置失败:', error)
@@ -842,22 +823,11 @@ export class PluginManager {
   private checkAndKillPlugin(pluginName: string, pluginPath: string): void {
     try {
       const data = api.dbGet('outKillPlugin')
-      const plugins = api.dbGet('plugins') || []
-      const currentPluginRef = resolvePluginVariantRefFromPlugins(plugins, {
-        pluginName,
-        pluginPath
-      })
-      if (
-        data &&
-        Array.isArray(data) &&
-        currentPluginRef &&
-        includesPluginVariantRef(data, currentPluginRef)
-      ) {
+      if (Array.isArray(data) && data.includes(pluginName)) {
         console.log(`插件 ${pluginName} 配置为退出后立即结束，销毁 view`)
         this.killPlugin(pluginPath)
       }
     } catch (error) {
-      // 配置不存在或读取失败，保持默认行为（不销毁）
       console.log('[Plugin] 读取 outKillPlugin 配置失败:', error)
     }
   }
@@ -929,15 +899,14 @@ export class PluginManager {
       const pluginInfoFromDB = this.fetchPluginInfoFromDB(pluginPath)
       const pluginConfig = this.readPluginConfig(pluginPath)
       const isDevelopment = !!pluginInfoFromDB?.isDevelopment
-      const pluginSource: PluginSource = isDevelopment ? 'development' : 'installed'
-      const runtimeNamespace = getPluginRuntimeNamespace(pluginConfig.name, pluginSource)
+      const effectiveName = pluginInfoFromDB?.name || pluginConfig.name
       const { pluginUrl } = this.resolvePluginUrl(pluginPath, pluginConfig, isDevelopment)
 
       const preloadPath = pluginConfig.preload
         ? path.join(pluginPath, pluginConfig.preload)
         : undefined
 
-      const sess = await this.setupPluginSession(pluginConfig.name, pluginSource, pluginPath)
+      const sess = await this.setupPluginSession(effectiveName, pluginPath)
       const view = this.createPluginWebContentsView(sess, preloadPath)
 
       // 注册事件监听
@@ -947,9 +916,7 @@ export class PluginManager {
       const logoUrl = this.buildPluginLogoUrl(pluginPath, pluginConfig.logo)
       const pluginInfo: PluginViewInfo = {
         path: pluginPath,
-        name: pluginConfig.name,
-        pluginSource,
-        runtimeNamespace,
+        name: effectiveName,
         view,
         subInputPlaceholder: '搜索',
         subInputVisible: false,
@@ -970,18 +937,14 @@ export class PluginManager {
         this.assemblyCoordinator.markDomReady(view.webContents.id)
         view.webContents.insertCSS(GLOBAL_SCROLLBAR_CSS)
         console.log('[Plugin] 后台预加载插件完成:', {
-          pluginName: pluginConfig.name,
-          pluginSource,
-          runtimeNamespace,
+          pluginName: effectiveName,
           pluginPath,
           webContentsId: view.webContents.id
         })
       })
 
       console.log('[Plugin] 后台预加载插件:', {
-        pluginName: pluginConfig.name,
-        pluginSource,
-        runtimeNamespace,
+        pluginName: effectiveName,
         pluginPath
       })
     } catch (error) {
@@ -1668,13 +1631,10 @@ export class PluginManager {
   /**
    * 读取分离窗口的上次尺寸（按插件名记录）
    */
-  private getStoredDetachedSize(
-    pluginName: string,
-    pluginSource: PluginSource
-  ): { width: number; height: number } | null {
+  private getStoredDetachedSize(pluginName: string): { width: number; height: number } | null {
     try {
       const sizes = api.dbGet('detachedWindowSizes')
-      const sizeKey = getDetachedWindowSizeKey(pluginName, pluginSource)
+      const sizeKey = getDetachedWindowSizeKey(pluginName)
       if (sizes && typeof sizes === 'object' && !Array.isArray(sizes) && sizes[sizeKey]) {
         const rawSize = sizes[sizeKey]
         const width = Number(rawSize?.width)
@@ -1715,8 +1675,7 @@ export class PluginManager {
       const pluginInfoFromDB = this.fetchPluginInfoFromDB(pluginPath)
       const pluginConfig = this.readPluginConfig(pluginPath)
       const isDevelopment = !!pluginInfoFromDB?.isDevelopment
-      const pluginSource: PluginSource = isDevelopment ? 'development' : 'installed'
-      const runtimeNamespace = getPluginRuntimeNamespace(pluginConfig.name, pluginSource)
+      const effectiveName = pluginInfoFromDB?.name || pluginConfig.name
       const { pluginUrl, isConfigHeadless } = this.resolvePluginUrl(
         pluginPath,
         pluginConfig,
@@ -1731,7 +1690,7 @@ export class PluginManager {
         ? path.join(pluginPath, pluginConfig.preload)
         : undefined
 
-      const sess = await this.setupPluginSession(pluginConfig.name, pluginSource, pluginPath)
+      const sess = await this.setupPluginSession(effectiveName, pluginPath)
       const pluginView = this.createPluginWebContentsView(sess, preloadPath)
 
       // 监听插件进程崩溃或退出
@@ -1743,16 +1702,14 @@ export class PluginManager {
         })
       })
 
-      const storedSize = this.getStoredDetachedSize(pluginConfig.name, pluginSource)
+      const storedSize = this.getStoredDetachedSize(effectiveName)
       const windowWidth = storedSize?.width ?? 800
       const viewHeight = storedSize?.height ?? this.pluginDefaultHeight
       const logoUrl = this.buildPluginLogoUrl(pluginPath, pluginConfig.logo)
 
       const detachedWindow = detachedWindowManager.createDetachedWindow(
         pluginPath,
-        pluginConfig.name,
-        pluginSource,
-        runtimeNamespace,
+        effectiveName,
         pluginView,
         {
           width: windowWidth,
@@ -1787,9 +1744,7 @@ export class PluginManager {
       })
 
       console.log('[Plugin] 插件已在独立窗口中创建:', {
-        pluginName: pluginConfig.name,
-        pluginSource,
-        runtimeNamespace,
+        pluginName: effectiveName,
         pluginPath
       })
       return { success: true }
@@ -1821,10 +1776,8 @@ export class PluginManager {
       // 读取插件配置
       const pluginJsonPath = path.join(this.currentPluginPath, 'plugin.json')
       const pluginConfig = JSON.parse(fsSync.readFileSync(pluginJsonPath, 'utf-8'))
-      const pluginSource: PluginSource = cached.isDevelopment ? 'development' : 'installed'
-      const runtimeNamespace = getPluginRuntimeNamespace(pluginConfig.name, pluginSource)
 
-      const storedSize = this.getStoredDetachedSize(pluginConfig.name, pluginSource)
+      const storedSize = this.getStoredDetachedSize(cached.name)
       const defaultViewHeight = this.pluginDefaultHeight
 
       // 若存在历史尺寸则优先使用
@@ -1856,9 +1809,7 @@ export class PluginManager {
       // 使用新的分离窗口管理器创建窗口（使用缓存的搜索框状态）
       const detachedWindow = detachedWindowManager.createDetachedWindow(
         this.currentPluginPath,
-        pluginConfig.name,
-        pluginSource,
-        runtimeNamespace,
+        cached.name,
         cached.view,
         {
           width: windowWidth,
@@ -1894,10 +1845,7 @@ export class PluginManager {
       this.currentPluginPath = null
 
       console.log('[Plugin] 插件已分离到独立窗口:', {
-        pluginName: pluginConfig.name,
-        pluginSource,
-        runtimeNamespace,
-        pluginPath: this.currentPluginPath
+        pluginName: cached.name
       })
       return { success: true }
     } catch (error: unknown) {
@@ -1917,8 +1865,6 @@ export class PluginManager {
   public getPluginInfoByWebContents(webContents: WebContents): {
     name: string
     path: string
-    pluginSource: PluginSource
-    runtimeNamespace: string
     canUseInternalApi: boolean
     isBundledInternal: boolean
     logo?: string
@@ -1929,8 +1875,6 @@ export class PluginManager {
         return {
           name: pluginViewInfo.name,
           path: pluginViewInfo.path,
-          pluginSource: pluginViewInfo.pluginSource,
-          runtimeNamespace: pluginViewInfo.runtimeNamespace,
           canUseInternalApi: canPluginUseInternalApi(pluginViewInfo.name),
           isBundledInternal: isBundledInternalPlugin(pluginViewInfo.name),
           logo: pluginViewInfo.logo
@@ -1945,8 +1889,6 @@ export class PluginManager {
         return {
           name: windowInfo.pluginName,
           path: windowInfo.pluginPath,
-          pluginSource: windowInfo.pluginSource,
-          runtimeNamespace: windowInfo.runtimeNamespace,
           canUseInternalApi: canPluginUseInternalApi(windowInfo.pluginName),
           isBundledInternal: isBundledInternalPlugin(windowInfo.pluginName)
         }

@@ -26,7 +26,6 @@ import {
   normalizeCommandAliases,
   type CommandAliasStore
 } from '@shared/commandShared'
-import { normalizePluginVariantRef, type PluginVariantRef } from '../../../shared/pluginVariantRef'
 
 /**
  * 权限错误类
@@ -56,15 +55,12 @@ function formatTimestamp(date: Date): string {
 /**
  * 将指定插件的所有文档导出为 JSON 文件到目标目录
  */
-async function exportPluginDocsToDir(
-  pluginRef: PluginVariantRef,
-  targetDir: string
-): Promise<void> {
-  const keysResult = await databaseAPI.getPluginDocKeys(pluginRef)
+async function exportPluginDocsToDir(pluginName: string, targetDir: string): Promise<void> {
+  const keysResult = await databaseAPI.getPluginDocKeys(pluginName)
   if (!keysResult.success) return
   const keys: Array<{ key: string; type: string }> = keysResult.data || []
   for (const item of keys) {
-    const docResult = await databaseAPI.getPluginDoc(pluginRef, item.key)
+    const docResult = await databaseAPI.getPluginDoc(pluginName, item.key)
     if (docResult.success) {
       const safeKey = item.key.replace(/[/\\:*?"<>|]/g, '_')
       const filePath = path.join(targetDir, `${safeKey}.json`)
@@ -79,18 +75,10 @@ async function exportPluginDocsToDir(
 }
 
 /**
- * 生成导出目录名。
- * 开发版追加 `-dev` 后缀，避免与安装版同名目录互相覆盖。
+ * 生成导出目录名（直接使用 pluginName，__dev 后缀已表明开发版）。
  */
-function getPluginExportFolderName(pluginRef: PluginVariantRef): string {
-  const normalized = normalizePluginVariantRef(pluginRef)
-  if (!normalized) {
-    return pluginRef.pluginName || 'unknown'
-  }
-
-  return normalized.source === 'development'
-    ? `${normalized.pluginName}-dev`
-    : normalized.pluginName
+function getPluginExportFolderName(pluginName: string): string {
+  return pluginName
 }
 
 /**
@@ -445,22 +433,19 @@ export class InternalPluginAPI {
       }
     )
 
-    ipcMain.handle('internal:get-plugin-doc-keys', async (event, pluginRef: PluginVariantRef) => {
+    ipcMain.handle('internal:get-plugin-doc-keys', async (event, pluginName: string) => {
       if (!requireInternalPlugin(this.pluginManager, event)) {
         throw new PermissionDeniedError('internal:get-plugin-doc-keys')
       }
-      return await databaseAPI.getPluginDocKeys(pluginRef)
+      return await databaseAPI.getPluginDocKeys(pluginName)
     })
 
-    ipcMain.handle(
-      'internal:get-plugin-doc',
-      async (event, pluginRef: PluginVariantRef, docKey: string) => {
-        if (!requireInternalPlugin(this.pluginManager, event)) {
-          throw new PermissionDeniedError('internal:get-plugin-doc')
-        }
-        return await databaseAPI.getPluginDoc(pluginRef, docKey)
+    ipcMain.handle('internal:get-plugin-doc', async (event, pluginName: string, docKey: string) => {
+      if (!requireInternalPlugin(this.pluginManager, event)) {
+        throw new PermissionDeniedError('internal:get-plugin-doc')
       }
-    )
+      return await databaseAPI.getPluginDoc(pluginName, docKey)
+    })
 
     ipcMain.handle('internal:get-plugin-data-stats', async (event) => {
       if (!requireInternalPlugin(this.pluginManager, event)) {
@@ -469,24 +454,24 @@ export class InternalPluginAPI {
       return await databaseAPI.getPluginDataStats()
     })
 
-    ipcMain.handle('internal:clear-plugin-data', async (event, pluginRef: PluginVariantRef) => {
+    ipcMain.handle('internal:clear-plugin-data', async (event, pluginName: string) => {
       if (!requireInternalPlugin(this.pluginManager, event)) {
         throw new PermissionDeniedError('internal:clear-plugin-data')
       }
-      return await databaseAPI.clearPluginData(pluginRef)
+      return await databaseAPI.clearPluginData(pluginName)
     })
 
-    ipcMain.handle('internal:export-plugin-data', async (event, pluginRef: PluginVariantRef) => {
+    ipcMain.handle('internal:export-plugin-data', async (event, pluginName: string) => {
       if (!requireInternalPlugin(this.pluginManager, event)) {
         throw new PermissionDeniedError('internal:export-plugin-data')
       }
       try {
         const ts = formatTimestamp(new Date())
         const downloadsDir = app.getPath('downloads')
-        const safePluginName = getPluginExportFolderName(pluginRef).replace(/[/\\:*?"<>|]/g, '_')
+        const safePluginName = getPluginExportFolderName(pluginName).replace(/[/\\:*?"<>|]/g, '_')
         const exportDir = path.join(downloadsDir, `${safePluginName}-${ts}`)
         await fs.promises.mkdir(exportDir, { recursive: true })
-        await exportPluginDocsToDir(pluginRef, exportDir)
+        await exportPluginDocsToDir(pluginName, exportDir)
         shell.showItemInFolder(exportDir)
         return { success: true, folderPath: exportDir }
       } catch (error: unknown) {
@@ -506,7 +491,6 @@ export class InternalPluginAPI {
         }
         const plugins: Array<{
           pluginName: string
-          pluginSource?: 'installed' | 'development'
         }> = statsResult.data || []
 
         const ts = formatTimestamp(new Date())
@@ -515,17 +499,13 @@ export class InternalPluginAPI {
         await fs.promises.mkdir(rootDir, { recursive: true })
 
         for (const plugin of plugins) {
-          const pluginRef: PluginVariantRef =
-            plugin.pluginName === 'ZTOOLS'
-              ? { pluginName: 'ZTOOLS', source: 'installed' }
-              : {
-                  pluginName: plugin.pluginName,
-                  source: plugin.pluginSource === 'development' ? 'development' : 'installed'
-                }
-          const safePluginName = getPluginExportFolderName(pluginRef).replace(/[/\\:*?"<>|]/g, '_')
+          const safePluginName = getPluginExportFolderName(plugin.pluginName).replace(
+            /[/\\:*?"<>|]/g,
+            '_'
+          )
           const pluginDir = path.join(rootDir, safePluginName)
           await fs.promises.mkdir(pluginDir, { recursive: true })
-          await exportPluginDocsToDir(pluginRef, pluginDir)
+          await exportPluginDocsToDir(plugin.pluginName, pluginDir)
         }
 
         shell.showItemInFolder(rootDir)

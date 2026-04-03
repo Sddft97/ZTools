@@ -27,7 +27,6 @@ import pluginClipboardAPI from './plugin/clipboard'
 import pluginDeviceAPI from './plugin/device'
 import pluginDialogAPI from './plugin/dialog'
 import { pluginFeatureAPI } from './plugin/feature'
-import { getPluginSource } from '../../shared/pluginVariantRef'
 import pluginHttpAPI from './plugin/http'
 import pluginInputAPI from './plugin/input'
 import internalPluginAPI from './plugin/internal'
@@ -256,10 +255,7 @@ class APIManager {
     plugin: any,
     cmdName: string
   ): { feature: any; cmdLabel: string; cmdType: string } | null {
-    const dynamicFeatures = pluginFeatureAPI.loadDynamicFeatures(
-      plugin.name,
-      getPluginSource(plugin.isDevelopment)
-    )
+    const dynamicFeatures = pluginFeatureAPI.loadDynamicFeatures(plugin.name)
     const allFeatures = [...(plugin.features || []), ...dynamicFeatures]
 
     for (const feature of allFeatures) {

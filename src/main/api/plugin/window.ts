@@ -47,7 +47,7 @@ export class PluginWindowAPI {
         const win = pluginWindowManager.createWindow(
           pluginInfo.path,
           pluginInfo.name,
-          getPluginSessionPartition(pluginInfo.name, pluginInfo.pluginSource),
+          getPluginSessionPartition(pluginInfo.name),
           url,
           options,
           event.sender

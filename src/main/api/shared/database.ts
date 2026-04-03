@@ -2,18 +2,10 @@ import { ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 import type { PluginManager } from '../../managers/pluginManager'
 import lmdbInstance from '../../core/lmdb/lmdbInstance'
 import {
-  buildPluginDataVariantRecord,
   getPluginDataPrefix,
-  getPluginRuntimeNamespace,
-  parsePluginRuntimeNamespace,
-  type PluginDataVariantRecord
+  isDevelopmentPluginName,
+  type PluginDataRecord
 } from '../../../shared/pluginRuntimeNamespace'
-import {
-  getPluginSource,
-  normalizePluginVariantRef,
-  type PluginSource,
-  type PluginVariantRef
-} from '../../../shared/pluginVariantRef'
 
 /**
  * 数据库API模块 - 主程序和插件共享
@@ -41,37 +33,22 @@ export class DatabaseAPI {
   }
 
   /**
-   * 将插件数据操作目标归一化为宿主内部使用的运行时命名空间信息。
+   * 将插件数据操作目标归一化为有效名称与前缀。
    */
-  private resolvePluginDataTarget(target: PluginVariantRef | string): {
+  private resolvePluginDataTarget(pluginName: string): {
     pluginName: string
-    pluginSource: PluginSource
-    runtimeNamespace: string
     prefix: string
     isHostData: boolean
   } | null {
-    const variantRef = normalizePluginVariantRef(target)
-    if (!variantRef) {
+    if (!pluginName) {
       return null
     }
 
-    if (variantRef.pluginName === 'ZTOOLS') {
-      return {
-        pluginName: 'ZTOOLS',
-        pluginSource: 'installed',
-        runtimeNamespace: 'ZTOOLS',
-        prefix: 'ZTOOLS/',
-        isHostData: true
-      }
+    if (pluginName === 'ZTOOLS') {
+      return { pluginName: 'ZTOOLS', prefix: 'ZTOOLS/', isHostData: true }
     }
 
-    return {
-      pluginName: variantRef.pluginName,
-      pluginSource: variantRef.source,
-      runtimeNamespace: getPluginRuntimeNamespace(variantRef.pluginName, variantRef.source),
-      prefix: getPluginDataPrefix(variantRef.pluginName, variantRef.source),
-      isHostData: false
-    }
+    return { pluginName, prefix: getPluginDataPrefix(pluginName), isHostData: false }
   }
 
   /**
@@ -83,7 +60,7 @@ export class DatabaseAPI {
     // 1. 检查是否来自插件主 BrowserView
     const pluginInfo = this.pluginManager?.getPluginInfoByWebContents(event.sender)
     if (pluginInfo) {
-      return getPluginDataPrefix(pluginInfo.name, pluginInfo.pluginSource)
+      return getPluginDataPrefix(pluginInfo.name)
     }
 
     // 2. 检查是否来自插件创建的子窗口
@@ -413,18 +390,18 @@ export class DatabaseAPI {
     })
 
     // 获取指定插件的所有文档 key（包括附件）
-    ipcMain.handle('get-plugin-doc-keys', async (_event, pluginRef: PluginVariantRef) => {
-      return await this._getPluginDocKeys(pluginRef)
+    ipcMain.handle('get-plugin-doc-keys', async (_event, pluginName: string) => {
+      return await this._getPluginDocKeys(pluginName)
     })
 
     // 获取指定插件的文档内容
-    ipcMain.handle('get-plugin-doc', async (_event, pluginRef: PluginVariantRef, key: string) => {
-      return await this._getPluginDoc(pluginRef, key)
+    ipcMain.handle('get-plugin-doc', async (_event, pluginName: string, key: string) => {
+      return await this._getPluginDoc(pluginName, key)
     })
 
     // 清空指定插件的所有数据
-    ipcMain.handle('clear-plugin-data', async (_event, pluginRef: PluginVariantRef) => {
-      return await this._clearPluginData(pluginRef)
+    ipcMain.handle('clear-plugin-data', async (_event, pluginName: string) => {
+      return await this._clearPluginData(pluginName)
     })
   }
 
@@ -486,7 +463,7 @@ export class DatabaseAPI {
    */
   private async _getPluginDataStats(): Promise<{
     success: boolean
-    data?: PluginDataVariantRecord[]
+    data?: PluginDataRecord[]
     error?: string
   }> {
     try {
@@ -524,27 +501,22 @@ export class DatabaseAPI {
 
       const pluginsDoc = lmdbInstance.get('ZTOOLS/plugins')
       const plugins = pluginsDoc?.data || []
-      const pluginsByRuntimeNamespace = new Map<string, any>()
+      const pluginsByName = new Map<string, any>()
       for (const plugin of plugins) {
         if (!plugin?.name) continue
-        const runtimeNamespace = getPluginRuntimeNamespace(
-          plugin.name,
-          getPluginSource(plugin.isDevelopment)
-        )
-        pluginsByRuntimeNamespace.set(runtimeNamespace, plugin)
+        pluginsByName.set(plugin.name, plugin)
       }
 
-      const data = Array.from(pluginStats.entries()).map(([runtimeNamespace, stats]) => {
-        const plugin = pluginsByRuntimeNamespace.get(runtimeNamespace)
-        const parsed = parsePluginRuntimeNamespace(runtimeNamespace)
-        return buildPluginDataVariantRecord({
-          pluginName: parsed.pluginName,
-          pluginSource: parsed.pluginSource,
+      const data = Array.from(pluginStats.entries()).map(([pluginName, stats]) => {
+        const plugin = pluginsByName.get(pluginName)
+        return {
+          pluginName,
           pluginTitle: plugin?.title || null,
           docCount: stats.docCount,
           attachmentCount: stats.attachmentCount,
-          logo: plugin?.logo || null
-        })
+          logo: plugin?.logo || null,
+          isDevelopment: isDevelopmentPluginName(pluginName)
+        } satisfies PluginDataRecord
       })
 
       // 添加 ZTOOLS/ 主程序数据统计
@@ -565,16 +537,14 @@ export class DatabaseAPI {
 
       // 将主程序数据插入到列表最前面
       if (ztoolsDocCount > 0 || ztoolsAttachmentCount > 0) {
-        data.unshift(
-          buildPluginDataVariantRecord({
-            pluginName: 'ZTOOLS',
-            pluginSource: 'installed',
-            pluginTitle: '主程序',
-            docCount: ztoolsDocCount,
-            attachmentCount: ztoolsAttachmentCount,
-            logo: null // 主程序没有 logo，前端会显示特殊图标
-          })
-        )
+        data.unshift({
+          pluginName: 'ZTOOLS',
+          pluginTitle: '主程序',
+          docCount: ztoolsDocCount,
+          attachmentCount: ztoolsAttachmentCount,
+          logo: null,
+          isDevelopment: false
+        })
       }
 
       return { success: true, data }
@@ -587,13 +557,13 @@ export class DatabaseAPI {
   /**
    * 获取指定插件的所有文档 key（供内部调用）
    */
-  private async _getPluginDocKeys(pluginRef: PluginVariantRef | string): Promise<{
+  private async _getPluginDocKeys(pluginName: string): Promise<{
     success: boolean
     data?: Array<{ key: string; type: 'document' | 'attachment' }>
     error?: string
   }> {
     try {
-      const target = this.resolvePluginDataTarget(pluginRef)
+      const target = this.resolvePluginDataTarget(pluginName)
       if (!target) {
         return { success: false, error: '插件标识无效' }
       }
@@ -643,11 +613,11 @@ export class DatabaseAPI {
    * 获取指定插件的文档或附件内容（供内部调用）
    */
   private async _getPluginDoc(
-    pluginRef: PluginVariantRef | string,
+    pluginName: string,
     key: string
   ): Promise<{ success: boolean; data?: any; type?: string; error?: string }> {
     try {
-      const target = this.resolvePluginDataTarget(pluginRef)
+      const target = this.resolvePluginDataTarget(pluginName)
       if (!target) {
         return { success: false, error: '插件标识无效' }
       }
@@ -685,10 +655,10 @@ export class DatabaseAPI {
    * 清空指定插件的所有数据（供内部调用）
    */
   private async _clearPluginData(
-    pluginRef: PluginVariantRef | string
+    pluginName: string
   ): Promise<{ success: boolean; deletedCount?: number; error?: string }> {
     try {
-      const target = this.resolvePluginDataTarget(pluginRef)
+      const target = this.resolvePluginDataTarget(pluginName)
       if (!target) {
         return { success: false, error: '插件标识无效' }
       }
@@ -770,7 +740,7 @@ export class DatabaseAPI {
    */
   public async getPluginDataStats(): Promise<{
     success: boolean
-    data?: PluginDataVariantRecord[]
+    data?: PluginDataRecord[]
     error?: string
   }> {
     return await this._getPluginDataStats()
@@ -779,31 +749,31 @@ export class DatabaseAPI {
   /**
    * 公共方法：获取指定插件的所有文档 key
    */
-  public async getPluginDocKeys(pluginRef: PluginVariantRef | string): Promise<{
+  public async getPluginDocKeys(pluginName: string): Promise<{
     success: boolean
     data?: Array<{ key: string; type: 'document' | 'attachment' }>
     error?: string
   }> {
-    return await this._getPluginDocKeys(pluginRef)
+    return await this._getPluginDocKeys(pluginName)
   }
 
   /**
    * 公共方法：获取指定插件的文档或附件内容
    */
   public async getPluginDoc(
-    pluginRef: PluginVariantRef,
+    pluginName: string,
     key: string
   ): Promise<{ success: boolean; data?: any; type?: string; error?: string }> {
-    return await this._getPluginDoc(pluginRef, key)
+    return await this._getPluginDoc(pluginName, key)
   }
 
   /**
    * 公共方法：清空指定插件的所有数据
    */
   public async clearPluginData(
-    pluginRef: PluginVariantRef
+    pluginName: string
   ): Promise<{ success: boolean; deletedCount?: number; error?: string }> {
-    return await this._clearPluginData(pluginRef)
+    return await this._clearPluginData(pluginName)
   }
 }
 

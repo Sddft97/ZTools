@@ -9,7 +9,6 @@ import {
   applySpecialConfig as _applySpecialConfig,
   calculateMatchScore as _calculateMatchScore
 } from './commandUtils'
-import { isSamePluginVariantRef } from '../../../shared/pluginVariantRef'
 import {
   COMMAND_ALIASES_KEY,
   normalizeCommandAliases,
@@ -69,8 +68,6 @@ export type CommandType =
   | 'plugin' // 插件功能
   | 'builtin' // 内置功能
 
-export type PluginSource = 'installed' | 'development'
-
 // 子类型（用于区分 direct 类型的具体来源）
 export type CommandSubType =
   | 'app' // 系统应用
@@ -89,7 +86,6 @@ export interface Command {
   subType?: CommandSubType // 子类型（用于区分 direct 类型）
   featureCode?: string // 插件功能代码（用于启动时指定功能）
   pluginName?: string // 插件名称（仅插件类型有效）
-  pluginSource?: PluginSource // 插件来源（安装版或开发版）
   pluginTitle?: string // 插件标题（仅插件类型有效）
   pluginExplain?: string // 插件功能说明
   matchCmd?: MatchCmd // 匹配指令配置（regex 或 over 或 img 或 files）
@@ -115,8 +111,6 @@ export interface MainPushFeature {
   pluginPath: string
   /** 提供该 mainPush 功能的插件名称。 */
   pluginName: string
-  /** 插件来源，用于区分安装版与开发版。 */
-  pluginSource?: PluginSource
   /** 插件 Logo。 */
   pluginLogo: string
   /** 功能编码。 */
@@ -246,51 +240,44 @@ export const useCommandDataStore = defineStore('commandData', () => {
 
   /**
    * 基于当前指令列表，找到与历史记录或固定项对应的最新指令快照。
-   * 对插件指令会优先按“插件名 + 功能码 + 安装/开发来源”匹配，避免双变体串联。
+   *
+   * 对插件指令（有 featureCode）采用两阶段匹配：
+   * 1. 精确匹配（含名称）——使别名指令项被正确识别，历史/固定列表中显示的是别名而非原始名称；
+   * 2. 宽松匹配（忽略名称）——别名已删除或指令被重命名时，降级展示原始指令，避免数据丢失。
+   *
+   * 对非插件指令按「名称 + type + subType + featureCode」精确匹配。
    */
   function findCurrentCommandMatch(storedCommand: Command): Command | undefined {
-    return commands.value.find((command) => {
-      if (
-        storedCommand.type === 'plugin' &&
-        command.type === 'plugin' &&
-        storedCommand.featureCode
-      ) {
-        if (storedCommand.pluginName && command.pluginName) {
-          if (!storedCommand.pluginSource) {
-            return (
-              command.path === storedCommand.path &&
-              command.featureCode === storedCommand.featureCode
-            )
-          }
-
-          return (
-            command.pluginName === storedCommand.pluginName &&
-            command.featureCode === storedCommand.featureCode &&
-            isSamePluginVariantRef(
-              {
-                pluginName: command.pluginName,
-                source: command.pluginSource || 'installed'
-              },
-              {
-                pluginName: storedCommand.pluginName,
-                source: storedCommand.pluginSource
-              }
-            )
-          )
-        }
-
-        return (
-          command.path === storedCommand.path && command.featureCode === storedCommand.featureCode
-        )
-      }
-
-      return (
-        command.name === storedCommand.name &&
-        command.type === storedCommand.type &&
-        command.subType === storedCommand.subType &&
-        command.featureCode === storedCommand.featureCode
+    // 非插件类型：直接按名称 + 类型精确匹配
+    if (storedCommand.type !== 'plugin' || !storedCommand.featureCode) {
+      return commands.value.find(
+        (cmd) =>
+          cmd.name === storedCommand.name &&
+          cmd.type === storedCommand.type &&
+          cmd.subType === storedCommand.subType &&
+          cmd.featureCode === storedCommand.featureCode
       )
-    })
+    }
+
+    // 插件类型：pluginName 已是全局唯一标识（开发版含 __dev 后缀）
+    const isSamePlugin = (cmd: Command): boolean => {
+      if (cmd.pluginName && storedCommand.pluginName) {
+        return cmd.pluginName === storedCommand.pluginName
+      }
+      return cmd.path === storedCommand.path
+    }
+
+    const isPluginMatch = (cmd: Command): boolean =>
+      cmd.type === 'plugin' && cmd.featureCode === storedCommand.featureCode && isSamePlugin(cmd)
+
+    // 阶段 1：精确匹配（含名称），使别名指令项被正确识别
+    const nameMatch = commands.value.find(
+      (cmd) => isPluginMatch(cmd) && cmd.name === storedCommand.name
+    )
+    if (nameMatch) return nameMatch
+
+    // 阶段 2：宽松匹配（忽略名称），别名已删除或指令重命名时降级展示原始指令
+    return commands.value.find(isPluginMatch)
   }
 
   async function loadCommandAliases(): Promise<CommandAliasStore> {
@@ -611,7 +598,6 @@ export const useCommandDataStore = defineStore('commandData', () => {
 
       for (const plugin of enabledPlugins) {
         if (plugin.features && Array.isArray(plugin.features) && plugin.features.length > 0) {
-          const pluginSource: PluginSource = plugin.isDevelopment ? 'development' : 'installed'
           // 检查是否有 feature 的 cmd 名称与插件名称相同
           const hasPluginNameCmd = plugin.features.some((feature: any) =>
             feature.cmds?.some(
@@ -647,7 +633,6 @@ export const useCommandDataStore = defineStore('commandData', () => {
               type: 'plugin',
               featureCode: defaultFeatureCode,
               pluginName: plugin.name,
-              pluginSource,
               pluginTitle: plugin.title,
               pluginExplain: defaultFeatureExplain || plugin.description,
               pinyin: pinyin(plugin.name, { toneType: 'none', type: 'string' })
@@ -675,7 +660,6 @@ export const useCommandDataStore = defineStore('commandData', () => {
                 mainPushItems.push({
                   pluginPath: plugin.path,
                   pluginName: plugin.name,
-                  pluginSource,
                   pluginLogo: plugin.logo || '',
                   featureCode: feature.code,
                   featureExplain: feature.explain || '',
@@ -700,7 +684,6 @@ export const useCommandDataStore = defineStore('commandData', () => {
                     type: 'plugin',
                     featureCode: feature.code,
                     pluginName: plugin.name,
-                    pluginSource,
                     pluginTitle: plugin.title,
                     pluginExplain: feature.explain,
                     matchCmd: cmd,
@@ -728,7 +711,6 @@ export const useCommandDataStore = defineStore('commandData', () => {
                         type: 'plugin',
                         featureCode: feature.code,
                         pluginName: plugin.name,
-                        pluginSource,
                         pluginTitle: plugin.title,
                         pluginExplain: feature.explain,
                         cmdType: 'text', // 标记为文本类型
@@ -1221,15 +1203,13 @@ export const useCommandDataStore = defineStore('commandData', () => {
 
   /**
    * 从历史记录中删除指定指令。
-   * 当存在安装版与开发版同名插件时，会结合 `pluginSource` 精确删除对应变体。
    */
   async function removeFromHistory(
     commandPath: string,
     featureCode?: string,
-    name?: string,
-    pluginSource?: PluginSource
+    name?: string
   ): Promise<void> {
-    await window.ztools.removeFromHistory(commandPath, featureCode, name, pluginSource)
+    await window.ztools.removeFromHistory(commandPath, featureCode, name)
     // 后端会发送 history-changed 事件，触发重新加载
   }
 
@@ -1245,8 +1225,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
         type: cmd.type,
         featureCode: cmd.featureCode, // 保存 featureCode
         pluginExplain: cmd.pluginExplain, // 保存插件说明
-        pluginName: cmd.pluginName,
-        pluginSource: cmd.pluginSource
+        pluginName: cmd.pluginName
       }))
 
       await window.ztools.dbPut(PINNED_DOC_ID, cleanData)
@@ -1257,14 +1236,8 @@ export const useCommandDataStore = defineStore('commandData', () => {
 
   /**
    * 检查指令是否已固定。
-   * 对插件指令会同时比对路径、功能编码以及插件来源，避免同名双变体互相污染状态。
    */
-  function isPinned(
-    commandPath: string,
-    featureCode?: string,
-    name?: string,
-    pluginSource?: PluginSource
-  ): boolean {
+  function isPinned(commandPath: string, featureCode?: string, name?: string): boolean {
     return pinnedCommands.value.some((cmd) => {
       // 对于插件，需要同时匹配 path 和 featureCode
       if (cmd.type === 'plugin' && featureCode !== undefined) {
@@ -1273,13 +1246,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
         }
         const matchesPath = cmd.path === commandPath
         const matchesPluginName = Boolean(name && cmd.pluginName === name)
-        if (!matchesPath && !matchesPluginName) {
-          return false
-        }
-        if (!pluginSource || !cmd.pluginSource) {
-          return true
-        }
-        return cmd.pluginSource === pluginSource
+        return matchesPath || matchesPluginName
       }
       // 非插件类型：同时匹配 name 和 path
       if (name) {
@@ -1299,15 +1266,13 @@ export const useCommandDataStore = defineStore('commandData', () => {
 
   /**
    * 取消固定指定指令。
-   * 对插件指令会把插件来源一并传给主进程，确保只移除目标变体。
    */
   async function unpinCommand(
     commandPath: string,
     featureCode?: string,
-    name?: string,
-    pluginSource?: PluginSource
+    name?: string
   ): Promise<void> {
-    await window.ztools.unpinApp(commandPath, featureCode, name, pluginSource)
+    await window.ztools.unpinApp(commandPath, featureCode, name)
     // 后端会发送 pinned-changed 事件，触发重新加载
   }
 

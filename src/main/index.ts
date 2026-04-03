@@ -15,7 +15,6 @@ import { loadInternalPlugins } from './core/internalPluginLoader'
 import { startInternalPluginServer } from './core/internalPluginServer'
 import pluginManager from './managers/pluginManager'
 import windowManager from './managers/windowManager'
-import { normalizePluginVariantRef, resolvePluginByVariantRef } from '../shared/pluginVariantRef'
 
 // Windows 平台需要设置 AppUserModelId 才能让单例锁正常工作
 if (process.platform === 'win32') {
@@ -161,14 +160,12 @@ app.whenReady().then(async () => {
         const plugins = api.dbGet('plugins')
         if (plugins && Array.isArray(plugins)) {
           for (const pluginRef of autoStartPlugins) {
-            const plugin = resolvePluginByVariantRef(plugins, pluginRef)
+            // pluginRef 可能是旧式 { pluginName, source } 或新式 string
+            const effectiveName =
+              typeof pluginRef === 'string' ? pluginRef : (pluginRef?.pluginName ?? '')
+            const plugin = plugins.find((p: any) => p?.name === effectiveName)
             if (plugin?.path && !disabledPlugins.has(plugin.path)) {
-              const normalizedRef = normalizePluginVariantRef(pluginRef)
-              console.log('[Main] 自动启动插件:', {
-                pluginName: plugin.name,
-                source:
-                  normalizedRef?.source || (plugin.isDevelopment ? 'development' : 'installed')
-              })
+              console.log('[Main] 自动启动插件:', { pluginName: plugin.name })
               pluginManager.preloadPlugin(plugin.path).catch((error) => {
                 console.error('[Main] 自动启动插件失败:', plugin.name, error)
               })

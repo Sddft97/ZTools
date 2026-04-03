@@ -218,12 +218,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { DEFAULT_AVATAR, useWindowStore } from '../../stores/windowStore'
-import {
-  includesPluginVariantRef,
-  resolvePluginVariantRefFromPlugins,
-  togglePluginVariantRef,
-  type PluginSource
-} from '../../../../shared/pluginVariantRef'
 import AdaptiveIcon from '../common/AdaptiveIcon.vue'
 import UpdateIcon from './UpdateIcon.vue'
 
@@ -263,13 +257,6 @@ const windowStore = useWindowStore()
 const searchBoxRef = ref<HTMLDivElement | null>(null)
 const searchActionsRef = ref<HTMLDivElement | null>(null)
 
-interface CurrentPluginVariantRef {
-  /** 当前插件名称。 */
-  pluginName: string
-  /** 当前插件来源。 */
-  source: PluginSource
-}
-
 /**
  * 根据当前上下文选择搜索框占位文案。
  */
@@ -283,58 +270,42 @@ const placeholderText = computed(() => {
 })
 
 /**
- * 解析当前打开插件对应的安装/开发变体引用。
+ * 获取当前打开插件的有效名称。
  */
-async function resolveCurrentPluginVariantRef(): Promise<CurrentPluginVariantRef | null> {
-  if (!windowStore.currentPlugin) {
-    return null
-  }
+function getCurrentPluginName(): string | null {
+  return windowStore.currentPlugin?.name ?? null
+}
 
-  try {
-    const allPlugins = await window.ztools.getAllPlugins()
-    const resolvedRef = resolvePluginVariantRefFromPlugins(allPlugins, {
-      pluginName: windowStore.currentPlugin.name,
-      pluginPath: windowStore.currentPlugin.path
-    })
-
-    if (resolvedRef) {
-      return {
-        pluginName: resolvedRef.pluginName,
-        source: resolvedRef.source
-      }
-    }
-  } catch (error) {
-    console.warn('解析当前插件变体失败，回退到默认来源:', error)
-  }
-
-  return {
-    pluginName: windowStore.currentPlugin.name,
-    source: 'installed'
-  }
+/** 解析配置列表，兼容旧式对象 */
+function normalizeConfigList(data: unknown): string[] {
+  if (!Array.isArray(data)) return []
+  return data
+    .map((item) => (typeof item === 'string' ? item : (item?.pluginName ?? '')))
+    .filter(Boolean)
 }
 
 /**
- * 切换当前插件变体在指定行为设置中的选中状态。
+ * 切换当前插件在指定行为设置中的选中状态。
  */
 async function toggleCurrentPluginVariantSetting(
   key: 'outKillPlugin' | 'autoDetachPlugin' | 'autoStartPlugin'
 ): Promise<void> {
-  const currentPluginRef = await resolveCurrentPluginVariantRef()
-  if (!currentPluginRef) {
+  const currentPluginName = getCurrentPluginName()
+  if (!currentPluginName) {
     return
   }
 
-  let currentList: unknown[] = []
+  let currentList: string[] = []
   try {
     const data = await window.ztools.dbGet(key)
-    if (Array.isArray(data)) {
-      currentList = data
-    }
+    currentList = normalizeConfigList(data)
   } catch (error) {
     console.debug(`未找到 ${key} 配置`, error)
   }
 
-  const nextList = togglePluginVariantRef(currentList, currentPluginRef)
+  const nextList = currentList.includes(currentPluginName)
+    ? currentList.filter((n) => n !== currentPluginName)
+    : [...currentList, currentPluginName]
   await window.ztools.dbPut(key, nextList)
   console.log(`已更新 ${key} 配置:`, nextList)
 }
@@ -979,34 +950,25 @@ async function handleSettingsClick(): Promise<void> {
     console.log('显示插件菜单')
 
     // 从数据库读取配置
-    let outKillPlugins: unknown[] = []
-    let autoDetachPlugins: unknown[] = []
-    let autoStartPlugins: unknown[] = []
+    let outKillPlugins: string[] = []
+    let autoDetachPlugins: string[] = []
+    let autoStartPlugins: string[] = []
     try {
       const killData = await window.ztools.dbGet('outKillPlugin')
-      if (killData && Array.isArray(killData)) {
-        outKillPlugins = killData
-      }
+      outKillPlugins = normalizeConfigList(killData)
       const detachData = await window.ztools.dbGet('autoDetachPlugin')
-      if (detachData && Array.isArray(detachData)) {
-        autoDetachPlugins = detachData
-      }
+      autoDetachPlugins = normalizeConfigList(detachData)
       const startData = await window.ztools.dbGet('autoStartPlugin')
-      if (startData && Array.isArray(startData)) {
-        autoStartPlugins = startData
-      }
+      autoStartPlugins = normalizeConfigList(startData)
     } catch (error) {
       console.log('读取配置失败（可能不存在）:', error)
     }
 
     // 检查当前插件是否在列表中
-    const currentPluginRef = await resolveCurrentPluginVariantRef()
-    const isAutoKill =
-      !!currentPluginRef && includesPluginVariantRef(outKillPlugins, currentPluginRef)
-    const isAutoDetach =
-      !!currentPluginRef && includesPluginVariantRef(autoDetachPlugins, currentPluginRef)
-    const isAutoStart =
-      !!currentPluginRef && includesPluginVariantRef(autoStartPlugins, currentPluginRef)
+    const currentPluginName = getCurrentPluginName()
+    const isAutoKill = !!currentPluginName && outKillPlugins.includes(currentPluginName)
+    const isAutoDetach = !!currentPluginName && autoDetachPlugins.includes(currentPluginName)
+    const isAutoStart = !!currentPluginName && autoStartPlugins.includes(currentPluginName)
 
     // 根据平台显示不同的快捷键
     const platform = window.ztools.getPlatform()

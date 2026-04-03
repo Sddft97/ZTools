@@ -34,6 +34,7 @@ describe('plugin feature runtime namespace', () => {
   })
 
   it('loads development dynamic features from the dev namespace', () => {
+    // 新系统：dev 插件 name 已含 __dev 后缀，直接传 demo__dev
     mockLmdb.get.mockImplementation((key: string) => {
       if (key === 'PLUGIN/demo__dev/dynamic-features') {
         return {
@@ -46,7 +47,7 @@ describe('plugin feature runtime namespace', () => {
     })
 
     const api = new PluginFeatureAPI()
-    const features = api.loadDynamicFeatures('demo', 'development' as any)
+    const features = api.loadDynamicFeatures('demo__dev')
 
     expect(mockLmdb.get).toHaveBeenCalledWith('PLUGIN/demo__dev/dynamic-features')
     expect(features).toEqual([{ code: 'demo.dev', cmds: ['开发版指令'] }])
@@ -54,9 +55,7 @@ describe('plugin feature runtime namespace', () => {
 
   it('saves development dynamic features into the dev namespace', () => {
     const api = new PluginFeatureAPI()
-    ;(api as any).saveDynamicFeatures('demo', 'development', [
-      { code: 'demo.dev', cmds: ['开发版'] }
-    ])
+    ;(api as any).saveDynamicFeatures('demo__dev', [{ code: 'demo.dev', cmds: ['开发版'] }])
 
     expect(mockLmdb.put).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -74,7 +73,7 @@ describe('plugin feature runtime namespace', () => {
     })
 
     const api = new PluginFeatureAPI()
-    api.clearPluginFeatures('demo', 'development' as any)
+    api.clearPluginFeatures('demo__dev')
 
     expect(mockLmdb.get).toHaveBeenCalledWith('PLUGIN/demo__dev/dynamic-features')
     expect(mockLmdb.remove).toHaveBeenCalledWith('PLUGIN/demo__dev/dynamic-features')

@@ -5,7 +5,6 @@ import { PluginDetail, NpmInstallPanel } from './components'
 import { compareVersions, upgradeInstalledPluginFromMarket, weightedSearch } from '@/utils'
 import { useJumpFunction, useZtoolsSubInput } from '@/composables'
 import { useRouter } from 'vue-router'
-import { matchesPluginVariant, normalizePluginVariantRef } from '@/utils/pluginVariantRef'
 
 // const emit = defineEmits<{
 //   (e: 'add-dev-consumed'): void
@@ -724,24 +723,15 @@ async function openPluginByPayload(payload: string): Promise<void> {
     })
   }
 
-  const normalizedPayload = (() => {
-    try {
-      return normalizePluginVariantRef(JSON.parse(payload))
-    } catch {
-      return normalizePluginVariantRef(payload)
-    }
-  })()
+  let pluginName = payload
+  try {
+    const parsed = JSON.parse(payload)
+    pluginName = typeof parsed === 'string' ? parsed : (parsed?.pluginName ?? payload)
+  } catch {
+    // payload is a plain string
+  }
 
-  const plugin = plugins.value.find((candidate) => {
-    if (normalizedPayload) {
-      if (normalizedPayload.path && candidate.path === normalizedPayload.path) {
-        return true
-      }
-      return matchesPluginVariant(candidate, normalizedPayload)
-    }
-
-    return candidate.name === payload
-  })
+  const plugin = plugins.value.find((candidate) => candidate.name === pluginName)
   if (plugin) {
     openPluginDetail(plugin)
   }

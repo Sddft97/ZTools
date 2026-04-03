@@ -9,7 +9,6 @@ const { success, error, confirm } = useToast()
 interface PluginData {
   pluginName: string
   pluginTitle?: string | null
-  pluginSource: 'installed' | 'development'
   isDevelopment: boolean
   docCount: number
   attachmentCount: number
@@ -33,20 +32,9 @@ function getDisplayName(data: Pick<PluginData, 'pluginName' | 'pluginTitle'> | n
   return data.pluginTitle || data.pluginName
 }
 
-// 生成设置页使用的插件变体引用
-function getPluginVariantRef(data: PluginData): {
-  pluginName: string
-  source: PluginData['pluginSource']
-} {
-  return {
-    pluginName: data.pluginName,
-    source: data.pluginSource
-  }
-}
-
-// 生成列表 key，避免同名安装版和开发版互相覆盖
+// 生成列表 key
 function getPluginDataKey(data: PluginData): string {
-  return `${data.pluginName}:${data.pluginSource}`
+  return data.pluginName
 }
 
 const { value: searchQuery } = useZtoolsSubInput('', '搜索数据...')
@@ -104,7 +92,7 @@ async function viewPluginDocs(pluginData: PluginData): Promise<void> {
   currentLevel.value = 'docList'
 
   try {
-    const result = await window.ztools.internal.getPluginDocKeys(getPluginVariantRef(pluginData))
+    const result = await window.ztools.internal.getPluginDocKeys(pluginData.pluginName)
     if (result.success) {
       docKeys.value = result.data || []
     }
@@ -123,7 +111,7 @@ async function viewDocContent(key: string): Promise<void> {
 
   try {
     const result = await window.ztools.internal.getPluginDoc(
-      getPluginVariantRef(currentPluginData.value),
+      currentPluginData.value.pluginName,
       key
     )
     if (result.success) {
@@ -173,9 +161,7 @@ async function handleClearData(): Promise<void> {
   if (!confirmed) return
 
   try {
-    const result = await window.ztools.internal.clearPluginData(
-      getPluginVariantRef(currentPluginData.value)
-    )
+    const result = await window.ztools.internal.clearPluginData(currentPluginData.value.pluginName)
     if (result.success) {
       success(`已成功清空 ${result.deletedCount} 个文档`)
       // 关闭弹窗

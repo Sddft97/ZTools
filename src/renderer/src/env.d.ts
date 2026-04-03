@@ -11,12 +11,6 @@ interface LastMatchState {
   timestamp: number
 }
 
-type PluginVariantRefInput = {
-  pluginName: string
-  source: 'installed' | 'development'
-  path?: string
-}
-
 declare global {
   interface Window {
     electron: {
@@ -113,7 +107,7 @@ declare global {
         content?: string
         error?: string
       }>
-      getPluginDbData: (pluginRef: PluginVariantRefInput) => Promise<{
+      getPluginDbData: (pluginName: string) => Promise<{
         success: boolean
         data?: Array<{ id: string; data: any; rev?: string; updatedAt?: string }>
         error?: string
@@ -145,22 +139,10 @@ declare global {
       }) => Promise<{ success: boolean; error?: string }>
       selectAvatar: () => Promise<{ success: boolean; path?: string; error?: string }>
       // 历史记录管理
-      // 当存在安装版/开发版同名插件时，pluginSource 用于精确定位对应变体
-      removeFromHistory: (
-        appPath: string,
-        featureCode?: string,
-        name?: string,
-        pluginSource?: 'installed' | 'development'
-      ) => Promise<void>
+      removeFromHistory: (appPath: string, featureCode?: string, name?: string) => Promise<void>
       // 固定应用管理
-      // 当存在安装版/开发版同名插件时，pluginSource 用于精确定位对应变体
       pinApp: (app: any) => Promise<void>
-      unpinApp: (
-        appPath: string,
-        featureCode?: string,
-        name?: string,
-        pluginSource?: 'installed' | 'development'
-      ) => Promise<void>
+      unpinApp: (appPath: string, featureCode?: string, name?: string) => Promise<void>
       updatePinnedOrder: (newOrder: any[]) => Promise<void>
       hidePlugin: () => void
       onContextMenuCommand: (callback: (command: string) => void) => () => void
@@ -235,7 +217,6 @@ declare global {
         data?: Array<{
           pluginName: string
           pluginTitle?: string | null
-          pluginSource: 'installed' | 'development'
           isDevelopment: boolean
           docCount: number
           attachmentCount: number
@@ -243,13 +224,13 @@ declare global {
         }>
         error?: string
       }>
-      getPluginDocKeys: (pluginRef: PluginVariantRefInput) => Promise<{
+      getPluginDocKeys: (pluginName: string) => Promise<{
         success: boolean
         data?: Array<{ key: string; type: 'document' | 'attachment' }>
         error?: string
       }>
       getPluginDoc: (
-        pluginRef: PluginVariantRefInput,
+        pluginName: string,
         key: string
       ) => Promise<{
         success: boolean
@@ -257,7 +238,7 @@ declare global {
         type?: 'document' | 'attachment'
         error?: string
       }>
-      clearPluginData: (pluginRef: PluginVariantRefInput) => Promise<{
+      clearPluginData: (pluginName: string) => Promise<{
         success: boolean
         deletedCount?: number
         error?: string

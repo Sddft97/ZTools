@@ -2,11 +2,6 @@
 import { marked } from 'marked'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useToast, DetailPanel, CommandTag, FeatureCard } from '@/components'
-import {
-  getPluginSource,
-  includesPluginVariantRef,
-  togglePluginVariantRef
-} from '@/utils/pluginVariantRef'
 
 interface PluginFeature {
   code: string
@@ -67,18 +62,21 @@ const isAutoKill = ref(false)
 const isAutoDetach = ref(false)
 const isAutoStart = ref(false)
 
-// 当前详情页插件对应的安装/开发变体引用
-const currentPluginVariantRef = computed(() => {
-  if (!props.plugin.name) {
-    return null
-  }
+// 当前详情页插件的有效名称（已包含 __dev 后缀）
+const currentPluginName = computed(() => props.plugin.name || null)
 
-  return {
-    pluginName: props.plugin.name,
-    source: getPluginSource(props.plugin.isDevelopment),
-    path: props.plugin.path
-  }
-})
+/** 解析配置列表，兼容旧式 { pluginName, source } 和新式 string */
+function normalizeConfigList(data: unknown): string[] {
+  if (!Array.isArray(data)) return []
+  return data
+    .map((item) => (typeof item === 'string' ? item : (item?.pluginName ?? '')))
+    .filter(Boolean)
+}
+
+/** 切换字符串列表中的某项 */
+function toggleInList(list: string[], name: string): string[] {
+  return list.includes(name) ? list.filter((n) => n !== name) : [...list, name]
+}
 
 // 点击外部关闭下拉菜单
 function handleClickOutside(): void {
@@ -96,8 +94,8 @@ async function loadPluginSettings(): Promise<void> {
 
   try {
     const killData = await window.ztools.internal.dbGet('outKillPlugin')
-    if (Array.isArray(killData) && currentPluginVariantRef.value) {
-      isAutoKill.value = includesPluginVariantRef(killData, currentPluginVariantRef.value)
+    if (Array.isArray(killData) && currentPluginName.value) {
+      isAutoKill.value = normalizeConfigList(killData).includes(currentPluginName.value)
     }
   } catch (error) {
     console.debug('未找到 outKillPlugin 配置', error)
@@ -105,8 +103,8 @@ async function loadPluginSettings(): Promise<void> {
 
   try {
     const detachData = await window.ztools.internal.dbGet('autoDetachPlugin')
-    if (Array.isArray(detachData) && currentPluginVariantRef.value) {
-      isAutoDetach.value = includesPluginVariantRef(detachData, currentPluginVariantRef.value)
+    if (Array.isArray(detachData) && currentPluginName.value) {
+      isAutoDetach.value = normalizeConfigList(detachData).includes(currentPluginName.value)
     }
   } catch (error) {
     console.debug('未找到 autoDetachPlugin 配置', error)
@@ -114,8 +112,8 @@ async function loadPluginSettings(): Promise<void> {
 
   try {
     const startData = await window.ztools.internal.dbGet('autoStartPlugin')
-    if (Array.isArray(startData) && currentPluginVariantRef.value) {
-      isAutoStart.value = includesPluginVariantRef(startData, currentPluginVariantRef.value)
+    if (Array.isArray(startData) && currentPluginName.value) {
+      isAutoStart.value = normalizeConfigList(startData).includes(currentPluginName.value)
     }
   } catch (error) {
     console.debug('未找到 autoStartPlugin 配置', error)
@@ -124,53 +122,53 @@ async function loadPluginSettings(): Promise<void> {
 
 // 切换「退出即结束」
 async function toggleAutoKill(): Promise<void> {
-  if (!currentPluginVariantRef.value) return
+  if (!currentPluginName.value) return
 
-  let list: unknown[] = []
+  let list: string[] = []
   try {
     const data = await window.ztools.internal.dbGet('outKillPlugin')
-    if (Array.isArray(data)) list = data
+    list = normalizeConfigList(data)
   } catch {
     // ignore
   }
 
-  list = togglePluginVariantRef(list, currentPluginVariantRef.value)
+  list = toggleInList(list, currentPluginName.value)
   await window.ztools.internal.dbPut('outKillPlugin', list)
-  isAutoKill.value = includesPluginVariantRef(list, currentPluginVariantRef.value)
+  isAutoKill.value = list.includes(currentPluginName.value)
 }
 
 // 切换「自动分离窗口」
 async function toggleAutoDetach(): Promise<void> {
-  if (!currentPluginVariantRef.value) return
+  if (!currentPluginName.value) return
 
-  let list: unknown[] = []
+  let list: string[] = []
   try {
     const data = await window.ztools.internal.dbGet('autoDetachPlugin')
-    if (Array.isArray(data)) list = data
+    list = normalizeConfigList(data)
   } catch {
     // ignore
   }
 
-  list = togglePluginVariantRef(list, currentPluginVariantRef.value)
+  list = toggleInList(list, currentPluginName.value)
   await window.ztools.internal.dbPut('autoDetachPlugin', list)
-  isAutoDetach.value = includesPluginVariantRef(list, currentPluginVariantRef.value)
+  isAutoDetach.value = list.includes(currentPluginName.value)
 }
 
 // 切换「跟随主程序同时启动运行」
 async function toggleAutoStart(): Promise<void> {
-  if (!currentPluginVariantRef.value) return
+  if (!currentPluginName.value) return
 
-  let list: unknown[] = []
+  let list: string[] = []
   try {
     const data = await window.ztools.internal.dbGet('autoStartPlugin')
-    if (Array.isArray(data)) list = data
+    list = normalizeConfigList(data)
   } catch {
     // ignore
   }
 
-  list = togglePluginVariantRef(list, currentPluginVariantRef.value)
+  list = toggleInList(list, currentPluginName.value)
   await window.ztools.internal.dbPut('autoStartPlugin', list)
-  isAutoStart.value = includesPluginVariantRef(list, currentPluginVariantRef.value)
+  isAutoStart.value = list.includes(currentPluginName.value)
 }
 
 function handleDisabledToggle(event: Event): void {
@@ -288,7 +286,7 @@ async function loadReadme(): Promise<void> {
 
 // 加载插件数据（文档和附件列表）
 async function loadPluginData(): Promise<void> {
-  if (!props.plugin.name || !currentPluginVariantRef.value) {
+  if (!props.plugin.name || !currentPluginName.value) {
     dataError.value = '插件名称不存在'
     return
   }
@@ -297,7 +295,7 @@ async function loadPluginData(): Promise<void> {
   dataError.value = ''
 
   try {
-    const result = await window.ztools.internal.getPluginDocKeys(currentPluginVariantRef.value)
+    const result = await window.ztools.internal.getPluginDocKeys(currentPluginName.value)
     if (result.success) {
       docKeys.value = result.data || []
     } else {
@@ -313,7 +311,7 @@ async function loadPluginData(): Promise<void> {
 
 // 清除插件全部数据
 async function handleClearAllData(): Promise<void> {
-  if (!props.plugin.name || !currentPluginVariantRef.value || isClearing.value) return
+  if (!props.plugin.name || !currentPluginName.value || isClearing.value) return
 
   // 确认弹窗，说明危险性
   const confirmed = await confirm({
@@ -328,7 +326,7 @@ async function handleClearAllData(): Promise<void> {
 
   isClearing.value = true
   try {
-    const result = await window.ztools.internal.clearPluginData(currentPluginVariantRef.value)
+    const result = await window.ztools.internal.clearPluginData(currentPluginName.value)
     if (result.success) {
       success('插件数据已清除')
       // 清空当前展开的数据
@@ -349,11 +347,11 @@ async function handleClearAllData(): Promise<void> {
 
 // 导出插件全部数据
 async function handleExportAllData(): Promise<void> {
-  if (!props.plugin.name || !currentPluginVariantRef.value || isExporting.value) return
+  if (!props.plugin.name || !currentPluginName.value || isExporting.value) return
 
   isExporting.value = true
   try {
-    const result = await window.ztools.internal.exportPluginData(currentPluginVariantRef.value)
+    const result = await window.ztools.internal.exportPluginData(currentPluginName.value)
     if (result.success) {
       success('数据已导出到下载目录')
     } else {
@@ -430,7 +428,7 @@ function normalizeCommand(cmd: any): any {
 
 // 切换数据详情展开状态
 async function toggleDataDetail(item: DocItem): Promise<void> {
-  if (!currentPluginVariantRef.value) return
+  if (!currentPluginName.value) return
 
   // 如果点击的是已展开的项，则收起
   if (expandedDataId.value === item.key) {
@@ -444,10 +442,7 @@ async function toggleDataDetail(item: DocItem): Promise<void> {
   currentDocType.value = item.type
 
   try {
-    const result = await window.ztools.internal.getPluginDoc(
-      currentPluginVariantRef.value,
-      item.key
-    )
+    const result = await window.ztools.internal.getPluginDoc(currentPluginName.value, item.key)
     if (result.success) {
       currentDocContent.value = result.data
       currentDocType.value = result.type || 'document'
