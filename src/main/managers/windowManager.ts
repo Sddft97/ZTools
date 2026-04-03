@@ -174,6 +174,13 @@ class WindowManager {
     else if (platform.isWindows) {
       windowConfig.backgroundColor = '#00000000'
     }
+    // Linux 系统配置
+    else if (platform.isLinux) {
+      // 不设置 type: 'panel'：X11 下 panel 类型会启用 focus-follows-mouse，
+      // 会导致鼠标移出窗口时 blur 就被触发从而隐藏窗口。
+      // Linux 下我们通过 setAlwaysOnTop 保持置顶层级，不需要 panel 类型。
+      delete windowConfig.type
+    }
 
     this.mainWindow = new BrowserWindow(windowConfig)
 
@@ -271,39 +278,19 @@ class WindowManager {
       if (this.suppressBlurHide) return
 
       if (platform.isLinux) {
-        // Linux/X11 上 blur 事件过于敏感：
-        // 1. type:'panel' 窗口会随鼠标移出触发 blur（focus-follows-mouse）
-        // 2. 插件 WebContentsView 获焦也会触发 blur
-        // 策略：延迟 150ms，排除以下两种"误触"后再真正隐藏：
-        //   a) 插件视图拥有焦点（应用内部焦点跳转）
-        //   b) 鼠标仍在窗口矩形范围内（focus-follows-mouse 滑出）
+        // Linux 上去掉了 type:'panel'，现在 blur 只会在真正点击其他窗口时触发。
+        // 但插件 WebContentsView 获焦仍会触发 blur，需延迟排除。
         if (this.blurHideTimer) {
           clearTimeout(this.blurHideTimer)
           this.blurHideTimer = null
         }
         this.blurHideTimer = setTimeout(() => {
           this.blurHideTimer = null
-
           // 主窗口重新获焦 → 不隐藏
           if (this.mainWindow?.isFocused()) return
-
           // 插件视图持有焦点（应用内部切换）→ 不隐藏
           if (pluginManager.isPluginViewFocused()) return
-
-          // 鼠标仍在窗口区域内（focus-follows-mouse 触发的 blur）→ 不隐藏
-          if (this.mainWindow) {
-            const [winX, winY] = this.mainWindow.getPosition()
-            const [winW, winH] = this.mainWindow.getSize()
-            const cursor = screen.getCursorScreenPoint()
-            const isInsideWindow =
-              cursor.x >= winX &&
-              cursor.x <= winX + winW &&
-              cursor.y >= winY &&
-              cursor.y <= winY + winH
-            if (isInsideWindow) return
-          }
-
-          // 以上情况均不满足 → 用户真的点击了其他窗口，隐藏
+          // 确认是点击了其他窗口，隐藏
           this.lastBlurHideTime = Date.now()
           this.hideWindow(false)
         }, 150)
