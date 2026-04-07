@@ -62,6 +62,13 @@ export class UpdaterAPI {
    * 启动自动检查（30分钟一次）
    */
   private startAutoCheck(): void {
+    // 暂时关闭自动更新功能
+    let tempDisable = true
+    if (tempDisable) {
+      console.log('[Updater] 自动检查更新已暂时关闭')
+      return
+    }
+
     try {
       // 获取设置
       const settings = databaseAPI.dbGet('settings-general')
@@ -383,6 +390,15 @@ export class UpdaterAPI {
    * 检查更新
    */
   public async checkUpdate(): Promise<any> {
+=======
+  private async checkUpdate(): Promise<any> {
+    // 暂时关闭版本检查功能
+    let tempDisable = true
+    if (tempDisable) {
+      console.log('[Updater] 开始检查更新... (已暂时关闭)')
+      return { hasUpdate: false, latestVersion: app.getVersion(), currentVersion: app.getVersion() }
+    }
+
     try {
       console.log('[Updater] 开始检查更新...')
 

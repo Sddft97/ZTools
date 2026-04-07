@@ -79,6 +79,7 @@ export interface Command {
   name: string
   path: string // 纯路径（应用路径 或 插件根目录路径）
   icon?: string
+  aliases?: string[]
   pinyin?: string
   pinyinAbbr?: string
   acronym?: string // 英文首字母缩写（用于搜索）
@@ -592,7 +593,8 @@ export const useCommandDataStore = defineStore('commandData', () => {
         { name: 'name', weight: 2 },
         { name: 'pinyin', weight: 1.5 },
         { name: 'pinyinAbbr', weight: 1 },
-        { name: 'acronym', weight: 1.5 }
+        { name: 'acronym', weight: 1.5 },
+        { name: 'aliases', weight: 1.5 } // 别名（英文原名、包名等）
       ],
       threshold: 0,
       ignoreLocation: true,
@@ -761,7 +763,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
       const enabledPlugins = plugins.filter((plugin: any) => enabledPluginPaths.has(plugin.path))
 
       // 处理本地应用指令
-      const appItems = rawApps.flatMap((app) => {
+      const appItems = rawApps.map((app) => {
         // 类型断言：后端可能返回扩展字段（type, subType）
         const extendedApp = app as any
         const baseApp = {
@@ -774,28 +776,11 @@ export const useCommandDataStore = defineStore('commandData', () => {
             .toLowerCase(),
           pinyinAbbr: pinyin(app.name, { pattern: 'first', toneType: 'none', type: 'string' })
             .replace(/\s+/g, '')
-            .toLowerCase()
-        }
-        const result = [baseApp]
-        // 如果有别名（如本地化名称），为每个别名生成一个独立的指令
-        if (extendedApp.aliases && Array.isArray(extendedApp.aliases)) {
-          for (const alias of extendedApp.aliases) {
-            if (alias && alias !== extendedApp.name) {
-              result.push({
-                ...baseApp,
-                name: alias,
-                pinyin: pinyin(alias, { toneType: 'none', type: 'string' })
-                  .replace(/\s+/g, '')
-                  .toLowerCase(),
-                pinyinAbbr: pinyin(alias, { pattern: 'first', toneType: 'none', type: 'string' })
-                  .replace(/\s+/g, '')
-                  .toLowerCase()
-              })
-            }
-          }
+            .toLowerCase(),
+          aliases: extendedApp.aliases || []
         }
 
-        return result
+        return baseApp
       })
 
       // 处理插件：每个 cmd 转换为一个独立指令，插件文本指令的别名会展开为额外的独立指令

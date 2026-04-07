@@ -881,6 +881,17 @@ export class PluginManager {
   }
 
   /**
+   * 检查插件 WebContentsView 是否当前北有焦点
+   * 供 Linux blur 事件处理器判断是否是应用内部焦点转移
+   */
+  public isPluginViewFocused(): boolean {
+    if (!this.pluginView || this.pluginView.webContents.isDestroyed()) {
+      return false
+    }
+    return this.pluginView.webContents.isFocused()
+  }
+
+  /**
    * 后台预加载插件（不显示在主窗口中，仅创建 WebContentsView 并缓存）
    * 用于"跟随主程序同时启动运行"功能
    */

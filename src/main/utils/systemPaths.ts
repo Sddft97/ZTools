@@ -42,3 +42,20 @@ export function getWindowsScanPaths(): string[] {
 export function getMacApplicationPaths(): string[] {
   return ['/Applications', '/System/Applications', `${process.env.HOME}/Applications`]
 }
+
+/**
+ * 获取 Linux XDG 应用目录路径（遵循 XDG Base Directory 规范）
+ * 包含用户级和系统级 .desktop 文件目录
+ */
+export function getLinuxApplicationPaths(): string[] {
+  const home = os.homedir()
+  const xdgDataDirs = process.env.XDG_DATA_DIRS || '/usr/local/share:/usr/share'
+  const baseDirs = xdgDataDirs.split(':').filter(Boolean)
+
+  const paths = [
+    path.join(home, '.local/share/applications'), // 用户安装的应用
+    ...baseDirs.map((dir) => path.join(dir, 'applications')) // 系统安装的应用
+  ]
+
+  return [...new Set(paths)] // 去重
+}

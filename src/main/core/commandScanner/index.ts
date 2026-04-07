@@ -1,6 +1,7 @@
 import { Command } from './types'
 import { scanApplications as macScan } from './macScanner'
 import { scanApplications as winScan } from './windowsScanner'
+import { scanApplications as linuxScan } from './linuxScanner'
 
 export type { AppScanner, Command } from './types'
 
@@ -14,6 +15,9 @@ export async function scanApplications(): Promise<Command[]> {
   } else if (platform === 'win32') {
     // Windows
     return winScan()
+  } else if (platform === 'linux') {
+    // Linux
+    return linuxScan()
   } else {
     console.warn(`[Scanner] 不支持的平台: ${platform}`)
     return []

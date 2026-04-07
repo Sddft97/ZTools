@@ -1,11 +1,20 @@
 import os from 'os'
-import macZToolsNative from '../../../../resources/lib/mac/ztools_native.node?asset'
-import winZToolsNative from '../../../../resources/lib/win/ztools_native.node?asset'
+import { clipboard } from 'electron'
 
 // 根据平台加载对应的原生模块
 const platform = os.platform()
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const addon = require(platform === 'darwin' ? macZToolsNative : winZToolsNative)
+
+// Linux 平台不加载 .node 原生模块（避免 ELF 格式错误）
+// 其他平台按需加载对应的原生模块
+let addon: any = null
+if (platform !== 'linux') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const macZToolsNative = require('../../../../resources/lib/mac/ztools_native.node?asset')
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const winZToolsNative = require('../../../../resources/lib/win/ztools_native.node?asset')
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  addon = require(platform === 'darwin' ? macZToolsNative : winZToolsNative)
+}
 
 // 原生模块接口类型定义
 interface UwpAppInfo {
@@ -93,6 +102,7 @@ type MouseButtonType = 'middle' | 'right' | 'back' | 'forward'
 export class ClipboardMonitor {
   private _callback: (() => void) | null = null
   private _isMonitoring = false
+  private _pollTimer: ReturnType<typeof setInterval> | null = null
 
   /**
    * 启动剪贴板监控
@@ -109,11 +119,26 @@ export class ClipboardMonitor {
 
     this._callback = callback
     this._isMonitoring = true
-    ;(addon as NativeAddon).startMonitor(() => {
-      if (this._callback) {
-        this._callback()
-      }
-    })
+
+    if (platform === 'linux') {
+      // Linux 降级：使用 Electron clipboard 轮询（每 500ms 检测一次变化）
+      let lastText = clipboard.readText()
+      this._pollTimer = setInterval(() => {
+        const current = clipboard.readText()
+        if (current !== lastText) {
+          lastText = current
+          if (this._callback) {
+            this._callback()
+          }
+        }
+      }, 500)
+    } else {
+      ;(addon as NativeAddon).startMonitor(() => {
+        if (this._callback) {
+          this._callback()
+        }
+      })
+    }
   }
 
   /**
@@ -124,7 +149,14 @@ export class ClipboardMonitor {
       return
     }
 
-    ;(addon as NativeAddon).stopMonitor()
+    if (platform === 'linux') {
+      if (this._pollTimer !== null) {
+        clearInterval(this._pollTimer)
+        this._pollTimer = null
+      }
+    } else {
+      ;(addon as NativeAddon).stopMonitor()
+    }
     this._isMonitoring = false
     this._callback = null
   }
@@ -207,11 +239,17 @@ export class WindowMonitor {
 
     this._callback = callback
     this._isMonitoring = true
-    ;(addon as NativeAddon).startWindowMonitor((windowInfo) => {
-      if (this._callback) {
-        this._callback(windowInfo)
-      }
-    })
+
+    if (platform === 'linux') {
+      // Linux 降级：暂不支持窗口焦点监控，静默忽略
+      console.warn('[WindowMonitor] Linux 平台暂不支持原生窗口监控，功能已降级')
+    } else {
+      ;(addon as NativeAddon).startWindowMonitor((windowInfo) => {
+        if (this._callback) {
+          this._callback(windowInfo)
+        }
+      })
+    }
   }
 
   /**
@@ -222,7 +260,9 @@ export class WindowMonitor {
       return
     }
 
-    ;(addon as NativeAddon).stopWindowMonitor()
+    if (platform !== 'linux') {
+      ;(addon as NativeAddon).stopWindowMonitor()
+    }
     this._isMonitoring = false
     this._callback = null
   }
@@ -246,6 +286,10 @@ export class WindowManager {
    * - Windows: { app, pid }
    */
   static getActiveWindow(): { app: string; bundleId?: string; pid?: number } | null {
+    if (platform === 'linux') {
+      return null
+    }
+
     const result = (addon as NativeAddon).getActiveWindow()
     if (!result || result.error) {
       return null
@@ -261,6 +305,10 @@ export class WindowManager {
    * @returns 是否激活成功
    */
   static activateWindow(identifier: string | number): boolean {
+    if (platform === 'linux') {
+      return false
+    }
+
     if (platform === 'darwin') {
       // macOS: bundleId 是字符串
       if (typeof identifier !== 'string') {
@@ -288,6 +336,9 @@ export class WindowManager {
    * @returns {boolean} 是否成功
    */
   static simulatePaste(): boolean {
+    if (platform === 'linux') {
+      return false
+    }
     return (addon as NativeAddon).simulatePaste()
   }
 
@@ -310,6 +361,10 @@ export class WindowManager {
    * WindowManager.simulateKeyboardTap('s', 'meta', 'shift');
    */
   static simulateKeyboardTap(key: string, ...modifiers: string[]): boolean {
+    if (platform === 'linux') {
+      return false
+    }
+
     if (typeof key !== 'string' || !key) {
       throw new TypeError('key must be a non-empty string')
     }
@@ -322,6 +377,9 @@ export class WindowManager {
    * @returns {boolean} 是否成功
    */
   static unicodeType(segment: string): boolean {
+    if (platform === 'linux') {
+      return false
+    }
     return (addon as NativeAddon).unicodeType(segment)
   }
 
@@ -368,6 +426,10 @@ export class WindowManager {
    * @returns 是否成功
    */
   static simulateMouseMove(x: number, y: number): boolean {
+    if (platform === 'linux') {
+      return false
+    }
+
     if (typeof x !== 'number' || typeof y !== 'number') {
       throw new TypeError('x and y must be numbers')
     }
@@ -384,6 +446,10 @@ export class WindowManager {
    * @returns 是否成功
    */
   static simulateMouseClick(x: number, y: number): boolean {
+    if (platform === 'linux') {
+      return false
+    }
+
     if (typeof x !== 'number' || typeof y !== 'number') {
       throw new TypeError('x and y must be numbers')
     }
@@ -400,6 +466,10 @@ export class WindowManager {
    * @returns 是否成功
    */
   static simulateMouseDoubleClick(x: number, y: number): boolean {
+    if (platform === 'linux') {
+      return false
+    }
+
     if (typeof x !== 'number' || typeof y !== 'number') {
       throw new TypeError('x and y must be numbers')
     }
@@ -416,6 +486,10 @@ export class WindowManager {
    * @returns 是否成功
    */
   static simulateMouseRightClick(x: number, y: number): boolean {
+    if (platform === 'linux') {
+      return false
+    }
+
     if (typeof x !== 'number' || typeof y !== 'number') {
       throw new TypeError('x and y must be numbers')
     }
@@ -474,6 +548,9 @@ export class MouseMonitor {
 
     MouseMonitor._callback = callback
     MouseMonitor._isMonitoring = true
+    if (platform === 'linux') {
+      return
+    }
     ;(addon as NativeAddon).startMouseMonitor(buttonType, longPressMs, () => {
       if (MouseMonitor._callback) {
         return MouseMonitor._callback()
@@ -489,7 +566,9 @@ export class MouseMonitor {
       return
     }
 
-    ;(addon as NativeAddon).stopMouseMonitor()
+    if (platform !== 'linux') {
+      ;(addon as NativeAddon).stopMouseMonitor()
+    }
     MouseMonitor._isMonitoring = false
     MouseMonitor._callback = null
   }
@@ -651,6 +730,18 @@ export class ColorPicker {
 
     ColorPicker._callback = callback
     ColorPicker._isActive = true
+
+    if (platform === 'linux') {
+      // Linux 暂不支持 ColorPicker，直接返回失败
+      ColorPicker._isActive = false
+      if (ColorPicker._callback) {
+        const cb = ColorPicker._callback
+        ColorPicker._callback = null
+        cb({ success: false, hex: null })
+      }
+      return
+    }
+
     ;(addon as NativeAddon).startColorPicker((result) => {
       ;(addon as NativeAddon).stopColorPicker()
 
@@ -671,7 +762,9 @@ export class ColorPicker {
       return
     }
 
-    ;(addon as NativeAddon).stopColorPicker()
+    if (platform !== 'linux') {
+      ;(addon as NativeAddon).stopColorPicker()
+    }
     ColorPicker._isActive = false
     ColorPicker._callback = null
   }
