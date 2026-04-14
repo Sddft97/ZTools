@@ -645,7 +645,12 @@ class DetachedWindowManager {
     for (const [windowId, info] of this.detachedWindowMap.entries()) {
       try {
         if (!info.window.isDestroyed()) {
+          // 向标题栏页面发送
           info.window.webContents.send(channel, ...args)
+        }
+        if (!info.view.webContents.isDestroyed()) {
+          // 向插件内容页面发送
+          info.view.webContents.send(channel, ...args)
         }
       } catch (error) {
         console.error(`[DetachedWindow] 广播消息到分离窗口 ${windowId} 失败:`, error)
