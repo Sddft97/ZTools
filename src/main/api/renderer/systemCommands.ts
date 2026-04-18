@@ -1,4 +1,6 @@
 import { exec, spawn } from 'child_process'
+import os from 'os'
+import path from 'path'
 import type { PluginManager } from '../../managers/pluginManager'
 import { BrowserWindow, clipboard, nativeImage, Notification, shell } from 'electron'
 import { promisify } from 'util'
@@ -7,11 +9,73 @@ import { screenCapture } from '../../core/screenCapture'
 import windowManager from '../../managers/windowManager'
 import webSearchAPI from './webSearch'
 import databaseAPI from '../shared/database'
-import { ColorPicker } from '../../core/native/index.js'
+import { ColorPicker, WindowManager } from '../../core/native/index.js'
 
 interface SystemCommandContext {
   mainWindow: Electron.BrowserWindow | null
   pluginManager: PluginManager | null
+}
+
+/**
+ * Windows 窗口信息类型
+ */
+interface WindowsWindowInfo {
+  hwnd?: number
+  className?: string
+}
+
+/**
+ * 获取 Windows 资源管理器当前文件夹路径
+ * 支持标准 Explorer 窗口（通过 COM）和桌面窗口（回退到桌面路径）
+ */
+function getWindowsExplorerPath(windowInfo: WindowsWindowInfo): string | null {
+  // 桌面窗口特殊处理（Progman: 桌面主窗口；WorkerW: 桌面壁纸层窗口）
+  if (windowInfo.className === 'Progman' || windowInfo.className === 'WorkerW') {
+    // 使用轻量级方式获取桌面路径：用户主目录 + Desktop
+    return path.join(os.homedir(), 'Desktop')
+  }
+
+  // 普通 Explorer 窗口，通过 COM 查询路径
+  if (!windowInfo.hwnd) {
+    return null
+  }
+
+  const folderUrl = WindowManager.getExplorerFolderPath(windowInfo.hwnd)
+  if (!folderUrl) {
+    return null
+  }
+
+  // 将 file:/// URL 转换为本地路径
+  return folderUrl.startsWith('file:///')
+    ? decodeURIComponent(folderUrl.replace(/^file:\/\/\//i, '')).replace(/\//g, '\\')
+    : folderUrl
+}
+
+/**
+ * 尝试启动终端（Windows 平台）
+ * 回退优先级：Windows Terminal -> PowerShell -> CMD
+ */
+async function tryLaunchWindowsTerminal(folderPath: string): Promise<boolean> {
+  const tryLaunch = (cmd: string, args: string[]): Promise<boolean> => {
+    return new Promise<boolean>((resolve) => {
+      const child = spawn(cmd, args, { detached: true, stdio: 'ignore' })
+      child.on('error', () => resolve(false))
+      if (child.pid) {
+        child.unref()
+        resolve(true)
+      }
+    })
+  }
+
+  return (
+    (await tryLaunch('wt.exe', ['-d', folderPath])) ||
+    (await tryLaunch('powershell.exe', [
+      '-NoExit',
+      '-Command',
+      `Set-Location -Path "${folderPath}"`
+    ])) ||
+    (await tryLaunch('cmd.exe', ['/K', `cd /d "${folderPath}"`]))
+  )
 }
 
 /**
@@ -405,6 +469,22 @@ async function handleCopyPath(
       console.error('[SystemCmd] 获取 Finder 路径失败:', error)
       return { success: false, error: String(error) }
     }
+  } else if (process.platform === 'win32') {
+    try {
+      const folderPath = getWindowsExplorerPath(previousWindow as WindowsWindowInfo)
+
+      if (!folderPath) {
+        return { success: false, error: '无法获取资源管理器路径' }
+      }
+
+      clipboard.writeText(folderPath)
+      console.log('[SystemCmd] 已复制路径:', folderPath)
+      ctx.mainWindow?.hide()
+      return { success: true, path: folderPath }
+    } catch (error) {
+      console.error('[SystemCmd] 获取资源管理器路径失败:', error)
+      return { success: false, error: String(error) }
+    }
   }
   return { success: false, error: `不支持的平台: ${process.platform}` }
 }
@@ -447,11 +527,11 @@ async function handleOpenTerminal(
   } else if (process.platform === 'linux') {
     try {
       // 获取当前用户主目录作为默认路径
-      const folderPath = require('os').homedir()
+      const folderPath = os.homedir()
 
       // 依次尝试常用的终端启动方式，由于 spawn 不会像 exec 那样容易受到注入攻击
       // 我们通过尝试启动不同的进程来实现兼容性
-      const tryLaunch = (cmd: string, args: string[]) => {
+      const tryLaunch = (cmd: string, args: string[]): Promise<boolean> => {
         return new Promise<boolean>((resolve) => {
           const child = spawn(cmd, args, { detached: true, stdio: 'ignore' })
           child.on('error', () => resolve(false))
@@ -478,6 +558,27 @@ async function handleOpenTerminal(
       }
 
       console.log('[SystemCmd] 已在终端打开')
+      ctx.mainWindow?.hide()
+      return { success: true }
+    } catch (error) {
+      console.error('[SystemCmd] 在终端打开失败:', error)
+      return { success: false, error: String(error) }
+    }
+  } else if (process.platform === 'win32') {
+    try {
+      const folderPath = getWindowsExplorerPath(previousWindow as WindowsWindowInfo)
+
+      if (!folderPath) {
+        return { success: false, error: '无法获取资源管理器路径' }
+      }
+
+      const launched = await tryLaunchWindowsTerminal(folderPath)
+
+      if (!launched) {
+        return { success: false, error: '无法启动终端' }
+      }
+
+      console.log('[SystemCmd] 已在终端打开:', folderPath)
       ctx.mainWindow?.hide()
       return { success: true }
     } catch (error) {

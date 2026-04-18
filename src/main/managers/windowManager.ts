@@ -70,6 +70,7 @@ class WindowManager {
     width?: number
     height?: number
     appPath?: string
+    hwnd?: number
   } | null = null // 打开应用前激活的窗口
   // private _shouldRestoreFocus = true // TODO: 是否在隐藏窗口时恢复焦点（待实现）
   private windowPositionsByDisplay: Record<number, { x: number; y: number }> = {}
@@ -787,6 +788,7 @@ class WindowManager {
     width?: number
     height?: number
     appPath?: string
+    hwnd?: number
   } | null {
     return this.previousActiveWindow
   }
