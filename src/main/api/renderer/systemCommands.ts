@@ -1,8 +1,8 @@
 import { exec, spawn } from 'child_process'
 import os from 'os'
-import path from 'path'
+import { fileURLToPath } from 'url'
 import type { PluginManager } from '../../managers/pluginManager'
-import { BrowserWindow, clipboard, nativeImage, Notification, shell } from 'electron'
+import { app, BrowserWindow, clipboard, nativeImage, Notification, shell } from 'electron'
 import { promisify } from 'util'
 import { GLOBAL_SCROLLBAR_CSS } from '../../core/globalStyles'
 import { screenCapture } from '../../core/screenCapture'
@@ -28,11 +28,11 @@ interface WindowsWindowInfo {
  * 获取 Windows 资源管理器当前文件夹路径
  * 支持标准 Explorer 窗口（通过 COM）和桌面窗口（回退到桌面路径）
  */
-function getWindowsExplorerPath(windowInfo: WindowsWindowInfo): string | null {
+export function getWindowsExplorerPath(windowInfo: WindowsWindowInfo): string | null {
   // 桌面窗口特殊处理（Progman: 桌面主窗口；WorkerW: 桌面壁纸层窗口）
   if (windowInfo.className === 'Progman' || windowInfo.className === 'WorkerW') {
     // 使用轻量级方式获取桌面路径：用户主目录 + Desktop
-    return path.join(os.homedir(), 'Desktop')
+    return app.getPath('desktop')
   }
 
   // 普通 Explorer 窗口，通过 COM 查询路径
@@ -46,16 +46,38 @@ function getWindowsExplorerPath(windowInfo: WindowsWindowInfo): string | null {
   }
 
   // 将 file:/// URL 转换为本地路径
-  return folderUrl.startsWith('file:///')
-    ? decodeURIComponent(folderUrl.replace(/^file:\/\/\//i, '')).replace(/\//g, '\\')
-    : folderUrl
+  try {
+    return fileURLToPath(folderUrl)
+  } catch {
+    // 如果不是有效的 file URL，直接返回原值
+    return folderUrl
+  }
 }
 
 /**
  * 尝试启动终端（Windows 平台）
  * 回退优先级：Windows Terminal -> PowerShell -> CMD
  */
-async function tryLaunchWindowsTerminal(folderPath: string): Promise<boolean> {
+/**
+ * 安全转义 PowerShell 路径参数
+ * 使用单引号包裹，将路径中的单引号替换为两个单引号
+ */
+function escapePowerShellPath(folderPath: string): string {
+  const escaped = folderPath.replace(/'/g, "''")
+  return `'${escaped}'`
+}
+
+/**
+ * 安全转义 CMD 路径参数
+ * 使用双引号包裹，将路径中的双引号转义
+ */
+function escapeCmdPath(folderPath: string): string {
+  // CMD 中双引号内的双引号需要用 ^ 转义
+  const escaped = folderPath.replace(/"/g, '^"')
+  return `"${escaped}"`
+}
+
+export async function tryLaunchWindowsTerminal(folderPath: string): Promise<boolean> {
   const tryLaunch = (cmd: string, args: string[]): Promise<boolean> => {
     return new Promise<boolean>((resolve) => {
       const child = spawn(cmd, args, { detached: true, stdio: 'ignore' })
@@ -67,14 +89,16 @@ async function tryLaunchWindowsTerminal(folderPath: string): Promise<boolean> {
     })
   }
 
+  // Windows Terminal 使用 spawn 参数数组，天然安全
+  // PowerShell 和 CMD 需要转义路径以防止命令注入
   return (
     (await tryLaunch('wt.exe', ['-d', folderPath])) ||
     (await tryLaunch('powershell.exe', [
       '-NoExit',
       '-Command',
-      `Set-Location -Path "${folderPath}"`
+      `Set-Location -Path ${escapePowerShellPath(folderPath)}`
     ])) ||
-    (await tryLaunch('cmd.exe', ['/K', `cd /d "${folderPath}"`]))
+    (await tryLaunch('cmd.exe', ['/K', `cd /d ${escapeCmdPath(folderPath)}`]))
   )
 }
 
