@@ -79,6 +79,12 @@
           "match": {
             "app": ["Finder.app", "explorer.exe"]
           }
+        },
+        {
+          "type": "files",
+          "label": "复制路径",
+          "minLength": 1,
+          "maxLength": 1
         }
       ]
     },
@@ -93,6 +99,13 @@
           "match": {
             "app": ["Finder.app", "explorer.exe"]
           }
+        },
+        {
+          "type": "files",
+          "label": "在终端打开",
+          "fileType": "directory",
+          "minLength": 1,
+          "maxLength": 1
         }
       ]
     },

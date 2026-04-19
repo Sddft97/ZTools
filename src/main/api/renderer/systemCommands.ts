@@ -167,11 +167,23 @@ export async function executeSystemCommand(
     case 'window-info':
       return handleWindowInfo(ctx)
 
-    case 'copy-path':
-      return handleCopyPath(ctx, execAsync)
+    case 'copy-path': {
+      // 从参数中提取文件路径（剪贴板文件）
+      let filePath: string | undefined
+      if (param?.type === 'files' && Array.isArray(param.payload) && param.payload.length === 1) {
+        filePath = param.payload[0].path
+      }
+      return handleCopyPath(ctx, execAsync, filePath)
+    }
 
-    case 'open-terminal':
-      return handleOpenTerminal(ctx, execAsync)
+    case 'open-terminal': {
+      // 从参数中提取文件夹路径（剪贴板文件夹）
+      let folderPath: string | undefined
+      if (param?.type === 'files' && Array.isArray(param.payload) && param.payload.length === 1) {
+        folderPath = param.payload[0].path
+      }
+      return handleOpenTerminal(ctx, execAsync, folderPath)
+    }
 
     case 'color-picker':
       return handleColorPicker(ctx)
@@ -439,9 +451,20 @@ function handleWindowInfo(ctx: SystemCommandContext): any {
 
 async function handleCopyPath(
   ctx: SystemCommandContext,
-  execAsync: (cmd: string) => Promise<{ stdout: string; stderr: string }>
+  execAsync: (cmd: string) => Promise<{ stdout: string; stderr: string }>,
+  filePath?: string
 ): Promise<any> {
-  console.log('[SystemCmd] 执行复制路径')
+  console.log('[SystemCmd] 执行复制路径', filePath ? `(剪贴板文件: ${filePath})` : '(从窗口获取)')
+
+  // 如果提供了文件路径（来自剪贴板），直接复制该路径
+  if (filePath) {
+    clipboard.writeText(filePath)
+    console.log('[SystemCmd] 已复制路径:', filePath)
+    ctx.mainWindow?.hide()
+    return { success: true, path: filePath }
+  }
+
+  // 否则从窗口获取路径（原有逻辑）
   const previousWindow = windowManager.getPreviousActiveWindow()
 
   if (!previousWindow) {
@@ -489,104 +512,130 @@ async function handleCopyPath(
   return { success: false, error: `不支持的平台: ${process.platform}` }
 }
 
-async function handleOpenTerminal(
-  ctx: SystemCommandContext,
+/**
+ * 在 macOS 上打开终端并切换到指定目录
+ */
+async function openTerminalOnMac(
+  folderPath: string,
   execAsync: (cmd: string) => Promise<{ stdout: string; stderr: string }>
-): Promise<any> {
-  console.log('[SystemCmd] 执行在终端打开')
-  const previousWindow = windowManager.getPreviousActiveWindow()
+): Promise<void> {
+  const script = `
+    tell application "Terminal"
+      activate
+      do script "cd " & quoted form of "${folderPath}"
+    end tell
+  `
+  await execAsync(`osascript -e '${script}'`)
+}
 
-  if (!previousWindow) {
-    return { success: false, error: '无法获取当前窗口信息' }
+/**
+ * 在 Linux 上尝试启动终端并切换到指定目录
+ * 回退优先级：exo-open -> gnome-terminal -> xterm
+ */
+async function openTerminalOnLinux(folderPath: string): Promise<boolean> {
+  const tryLaunch = (cmd: string, args: string[]): Promise<boolean> => {
+    return new Promise<boolean>((resolve) => {
+      const child = spawn(cmd, args, { detached: true, stdio: 'ignore' })
+      child.on('error', () => resolve(false))
+      if (child.pid) {
+        child.unref()
+        resolve(true)
+      }
+    })
   }
 
-  if (process.platform === 'darwin') {
-    try {
-      const script = `
-      tell application "Finder"
-        if (count of Finder windows) is 0 then
-          set folderPath to POSIX path of (desktop as alias)
-        else
-          set folderPath to POSIX path of (target of front window as alias)
-        end if
-      end tell
+  return (
+    (await tryLaunch('exo-open', [
+      '--launch',
+      'TerminalEmulator',
+      '--working-directory',
+      folderPath
+    ])) ||
+    (await tryLaunch('gnome-terminal', [`--working-directory=${folderPath}`])) ||
+    (await tryLaunch('xterm', ['-cd', folderPath]))
+  )
+}
 
-      tell application "Terminal"
-        activate
-        do script "cd " & quoted form of folderPath
-      end tell
-    `
-      await execAsync(`osascript -e '${script}'`)
-      console.log('[SystemCmd] 已在终端打开')
-      ctx.mainWindow?.hide()
-      return { success: true }
-    } catch (error) {
-      console.error('[SystemCmd] 在终端打开失败:', error)
-      return { success: false, error: String(error) }
-    }
-  } else if (process.platform === 'linux') {
-    try {
-      // 获取当前用户主目录作为默认路径
-      const folderPath = os.homedir()
+/**
+ * 从窗口信息获取 macOS 访达当前目录路径
+ */
+async function getMacFinderPath(
+  execAsync: (cmd: string) => Promise<{ stdout: string; stderr: string }>
+): Promise<string> {
+  const script = `
+    tell application "Finder"
+      if (count of Finder windows) is 0 then
+        return POSIX path of (desktop as alias)
+      else
+        return POSIX path of (target of front window as alias)
+      end if
+    end tell
+  `
+  const { stdout } = await execAsync(`osascript -e '${script}'`)
+  return stdout.trim()
+}
 
-      // 依次尝试常用的终端启动方式，由于 spawn 不会像 exec 那样容易受到注入攻击
-      // 我们通过尝试启动不同的进程来实现兼容性
-      const tryLaunch = (cmd: string, args: string[]): Promise<boolean> => {
-        return new Promise<boolean>((resolve) => {
-          const child = spawn(cmd, args, { detached: true, stdio: 'ignore' })
-          child.on('error', () => resolve(false))
-          // 只要进程成功启动（没有立即触发 error 且 pid 存在），就认为成功
-          if (child.pid) {
-            child.unref()
-            resolve(true)
-          }
-        })
+async function handleOpenTerminal(
+  ctx: SystemCommandContext,
+  execAsync: (cmd: string) => Promise<{ stdout: string; stderr: string }>,
+  folderPath?: string
+): Promise<any> {
+  console.log(
+    '[SystemCmd] 执行在终端打开',
+    folderPath ? `(剪贴板文件夹: ${folderPath})` : '(从窗口获取)'
+  )
+
+  try {
+    let targetPath: string | null = folderPath ?? null
+
+    // 如果没有提供路径，从窗口获取
+    if (!targetPath) {
+      const previousWindow = windowManager.getPreviousActiveWindow()
+      if (!previousWindow) {
+        return { success: false, error: '无法获取当前窗口信息' }
       }
 
-      const launched =
-        (await tryLaunch('exo-open', [
-          '--launch',
-          'TerminalEmulator',
-          '--working-directory',
-          folderPath
-        ])) ||
-        (await tryLaunch('gnome-terminal', [`--working-directory=${folderPath}`])) ||
-        (await tryLaunch('xterm', ['-cd', folderPath]))
+      if (process.platform === 'darwin') {
+        targetPath = await getMacFinderPath(execAsync)
+      } else if (process.platform === 'win32') {
+        targetPath = getWindowsExplorerPath(previousWindow as WindowsWindowInfo)
+        if (!targetPath) {
+          return { success: false, error: '无法获取资源管理器路径' }
+        }
+      } else if (process.platform === 'linux') {
+        // linux获取当前目录路径的方式待定，先写home目录
+        targetPath = os.homedir()
+      }
+    }
 
+    if (!targetPath) {
+      return { success: false, error: '无法确定目标路径' }
+    }
+
+    // 根据平台打开终端
+    if (process.platform === 'darwin') {
+      await openTerminalOnMac(targetPath, execAsync)
+    } else if (process.platform === 'linux') {
+      const launched = await openTerminalOnLinux(targetPath)
       if (!launched) {
         throw new Error('Could not find a supported terminal emulator')
       }
-
-      console.log('[SystemCmd] 已在终端打开')
-      ctx.mainWindow?.hide()
-      return { success: true }
-    } catch (error) {
-      console.error('[SystemCmd] 在终端打开失败:', error)
-      return { success: false, error: String(error) }
-    }
-  } else if (process.platform === 'win32') {
-    try {
-      const folderPath = getWindowsExplorerPath(previousWindow as WindowsWindowInfo)
-
-      if (!folderPath) {
-        return { success: false, error: '无法获取资源管理器路径' }
-      }
-
-      const launched = await tryLaunchWindowsTerminal(folderPath)
-
+    } else if (process.platform === 'win32') {
+      const launched = await tryLaunchWindowsTerminal(targetPath)
       if (!launched) {
         return { success: false, error: '无法启动终端' }
       }
-
-      console.log('[SystemCmd] 已在终端打开:', folderPath)
-      ctx.mainWindow?.hide()
-      return { success: true }
-    } catch (error) {
-      console.error('[SystemCmd] 在终端打开失败:', error)
-      return { success: false, error: String(error) }
+    } else {
+      return { success: false, error: `不支持的平台: ${process.platform}` }
     }
+
+    console.log('[SystemCmd] 已在终端打开:', targetPath)
+    ctx.mainWindow?.hide()
+    return { success: true }
+  } catch (error) {
+    console.error('[SystemCmd] 在终端打开失败:', error)
+    return { success: false, error: String(error) }
   }
-  return { success: false, error: `不支持的平台: ${process.platform}` }
 }
 
 function handleColorPicker(ctx: SystemCommandContext): Promise<any> {

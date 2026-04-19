@@ -1,20 +1,24 @@
 # Windows 文件管理器支持开发文档
 
 ## 需求背景
+
 当前【复制路径】和【在终端打开】两个系统指令仅支持 macOS 的 Finder，需要在 Windows 系统的文件管理器（explorer.exe）中也支持这两个功能。
 
 ## 技术方案
 
 ### 核心原理
+
 利用已有的原生模块 API `getExplorerFolderPath(hwnd)` 获取 Windows Explorer 当前窗口的文件夹路径。该 API 通过 COM IShellWindows 接口查询指定窗口句柄对应的 Explorer 文件夹路径。
 
 ### 修改范围
 
 #### 1. 指令配置 (`internal-plugins/system/public/plugin.json`)
+
 - 修改 `copy-path` 和 `open-terminal` 两个 feature 的 window match 配置
 - 在 `match.app` 数组中添加 `"explorer.exe"`
 
 #### 2. 系统命令实现 (`src/main/api/renderer/systemCommands.ts`)
+
 - 修改 `handleCopyPath` 函数，添加 Windows 平台支持
 - 修改 `handleOpenTerminal` 函数，添加 Windows 平台支持
 - 通过 `WindowManager.getExplorerFolderPath(hwnd)` 获取 Explorer 路径
@@ -26,20 +30,24 @@
 ```json
 {
   "code": "copy-path",
-  "cmds": [{
-    "type": "window",
-    "match": { "app": ["Finder.app", "explorer.exe"] }
-  }]
+  "cmds": [
+    {
+      "type": "window",
+      "match": { "app": ["Finder.app", "explorer.exe"] }
+    }
+  ]
 }
 ```
 
 ```json
 {
   "code": "open-terminal",
-  "cmds": [{
-    "type": "window",
-    "match": { "app": ["Finder.app", "explorer.exe"] }
-  }]
+  "cmds": [
+    {
+      "type": "window",
+      "match": { "app": ["Finder.app", "explorer.exe"] }
+    }
+  ]
 }
 ```
 
@@ -105,10 +113,14 @@ async function handleOpenTerminalWin(ctx: SystemCommandContext): Promise<any> {
   const tryLaunchPowerShell = async (): Promise<boolean> => {
     const { spawn } = await import('child_process')
     return new Promise((resolve) => {
-      const child = spawn('powershell.exe', ['-NoExit', '-Command', `Set-Location -Path "${normalPath}"`], {
-        detached: true,
-        stdio: 'ignore'
-      })
+      const child = spawn(
+        'powershell.exe',
+        ['-NoExit', '-Command', `Set-Location -Path "${normalPath}"`],
+        {
+          detached: true,
+          stdio: 'ignore'
+        }
+      )
       child.on('error', () => resolve(false))
       if (child.pid) {
         child.unref()
@@ -132,7 +144,8 @@ async function handleOpenTerminalWin(ctx: SystemCommandContext): Promise<any> {
     })
   }
 
-  const launched = await tryLaunchTerminal() || await tryLaunchPowerShell() || await tryLaunchCMD()
+  const launched =
+    (await tryLaunchTerminal()) || (await tryLaunchPowerShell()) || (await tryLaunchCMD())
 
   if (!launched) {
     return { success: false, error: '无法启动终端' }
@@ -164,6 +177,7 @@ case 'open-terminal':
 ## 测试计划
 
 ### 单元测试
+
 1. 测试 `handleCopyPathWin` 正常获取路径并复制到剪贴板
 2. 测试 `handleOpenTerminalWin` 正常打开终端并切换到对应目录
 3. 测试无 hwnd 时的错误处理
@@ -171,6 +185,7 @@ case 'open-terminal':
 5. 测试终端启动失败时的回退逻辑
 
 ### 集成测试
+
 1. 在 Windows 文件管理器中唤起超级面板，验证【复制路径】指令显示
 2. 点击【复制路径】，验证路径正确复制到剪贴板
 3. 在 Windows 文件管理器中唤起超级面板，验证【在终端打开】指令显示
@@ -178,6 +193,7 @@ case 'open-terminal':
 5. 验证在非 explorer 窗口唤起时不会显示这两个指令
 
 ### 回归测试
+
 1. 验证 macOS 的【复制路径】和【在终端打开】功能正常工作
 2. 验证 Linux 的【在终端打开】功能正常工作
 
